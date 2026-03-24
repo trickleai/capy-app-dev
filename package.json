@@ -1,0 +1,18 @@
+{
+  "name": "capy-app-dev",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "bin": {
+    "capy-app-dev": "dist/index.js"
+  },
+  "scripts": {
+    "build": "node build.mjs",
+    "typecheck": "tsc --noEmit"
+  },
+  "devDependencies": {
+    "@types/node": "^24.3.0",
+    "esbuild": "^0.25.9",
+    "typescript": "^5.9.2"
+  }
+}
