@@ -11,6 +11,7 @@ const DEFAULT_API_URL = "https://api.samdy.run";
 const RESERVED_SUBDOMAINS = new Set(["www", "api", "admin", "dashboard", "docs", "status"]);
 const APP_NAME_PATTERN = /^[a-z0-9](?:[a-z0-9-]*[a-z0-9])?$/;
 const SCAFFOLD_IGNORE_NAMES = new Set([".DS_Store", "dist", "node_modules"]);
+const AUTH_TOKEN_ENV_NAMES = ["CAPY_AUTH_TOKEN", "MANAGEMENT_API_TOKEN"] as const;
 
 interface ProjectConfig {
   appName: string;
@@ -370,12 +371,15 @@ function getApiContext(options?: { requireUserId?: boolean }): {
   userId?: string;
 } {
   const rawApiUrl = process.env.CAPY_API_URL?.trim() || DEFAULT_API_URL;
-  const authToken = process.env.CAPY_AUTH_TOKEN?.trim();
+  const authToken = getFirstConfiguredEnvValue(AUTH_TOKEN_ENV_NAMES);
 
   if (!authToken) {
-    throw new CliError("CAPY_AUTH_TOKEN is required", {
+    throw new CliError(
+      `One of these environment variables is required: ${AUTH_TOKEN_ENV_NAMES.join(", ")}`,
+      {
       code: "MISSING_AUTH_TOKEN",
-    });
+      },
+    );
   }
 
   let baseUrl: URL;
@@ -719,6 +723,17 @@ function parseJson(rawValue: string): unknown {
   }
 }
 
+function getFirstConfiguredEnvValue(names: readonly string[]): string | undefined {
+  for (const name of names) {
+    const value = process.env[name]?.trim();
+    if (value) {
+      return value;
+    }
+  }
+
+  return undefined;
+}
+
 async function pathExists(targetPath: string): Promise<boolean> {
   return (await lstat(targetPath).catch(() => null)) !== null;
 }
@@ -739,7 +754,8 @@ Usage:
 
 Environment:
   CAPY_API_URL     Optional. Defaults to https://api.samdy.run
-  CAPY_AUTH_TOKEN  Required for API calls
+  CAPY_AUTH_TOKEN  Preferred token for API calls
+  MANAGEMENT_API_TOKEN  Accepted fallback token name for API calls
   CAPY_USER_ID     Required for create
 `);
 }
