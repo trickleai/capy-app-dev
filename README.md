@@ -28,3 +28,5 @@ npm run typecheck
 npm run build
 node dist/index.js help
 ```
+
+This package includes a local `.npmrc` with `include=dev`, so `npm install` still installs the build toolchain in production-biased sandbox environments.

@@ -500,7 +500,7 @@ async function createDeployArchive(buildDir: string): Promise<DeployPackageResul
     rawManifest = await readFile(manifestPath, "utf8");
   } catch {
     throw new CliError(
-      `No deploy.json found in ${buildDir}\nHint: Run your build command first, then ensure deploy.json exists in the output directory.`,
+      `No deploy.json found in ${buildDir}\nHint: Run your build command first. The default scaffold emits deploy.json from build-server.ts; custom projects must generate dist/deploy.json with worker.entry and/or assets.directory.`,
       { code: "MISSING_DEPLOY_MANIFEST" },
     );
   }
