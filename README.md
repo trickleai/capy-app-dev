@@ -43,3 +43,5 @@ By default, `capy-app-dev init` fetches the public scaffold repository:
 `https://github.com/trickleai/capy-scaffold-default.git`
 
 For monorepo or local development, set `CAPY_DEFAULT_SCAFFOLD_PATH` to a local scaffold checkout instead.
+
+The default scaffold is expected to produce a self-contained client `index.html` so preview deployments do not rely on correct JS/CSS MIME handling from platform asset delivery.

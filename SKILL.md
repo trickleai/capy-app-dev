@@ -57,6 +57,8 @@ node dist/index.js init
 
 By default `init` fetches the public default scaffold repository. For local development, `CAPY_DEFAULT_SCAFFOLD_PATH` can point at a local checkout instead.
 
+The default scaffold is expected to emit a self-contained client `index.html` so preview deployments remain usable even if platform asset responses have incorrect MIME types for module JS or CSS.
+
 4. Install dependencies and build the app:
 
 ```bash
