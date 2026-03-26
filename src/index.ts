@@ -8,10 +8,14 @@ import { fileURLToPath } from "node:url";
 const execFileAsync = promisify(execFile);
 const CONFIG_FILE_NAME = ".capy-app.json";
 const DEFAULT_API_URL = "https://api.samdy.run";
+const DEFAULT_SCAFFOLD_REPO_URL = "https://github.com/trickleai/capy-scaffold-default.git";
 const RESERVED_SUBDOMAINS = new Set(["www", "api", "admin", "dashboard", "docs", "status"]);
 const APP_NAME_PATTERN = /^[a-z0-9](?:[a-z0-9-]*[a-z0-9])?$/;
-const SCAFFOLD_IGNORE_NAMES = new Set([".DS_Store", "dist", "node_modules"]);
+const SCAFFOLD_IGNORE_NAMES = new Set([".DS_Store", "dist", "node_modules", ".git"]);
 const AUTH_TOKEN_ENV_NAMES = ["CAPY_AUTH_TOKEN", "MANAGEMENT_API_TOKEN"] as const;
+const DEFAULT_SCAFFOLD_PATH_ENV = "CAPY_DEFAULT_SCAFFOLD_PATH";
+const DEFAULT_SCAFFOLD_REPO_ENV = "CAPY_DEFAULT_SCAFFOLD_REPO";
+const DEFAULT_SCAFFOLD_REF_ENV = "CAPY_DEFAULT_SCAFFOLD_REF";
 
 interface ProjectConfig {
   appName: string;
@@ -70,6 +74,12 @@ interface DeployPackageResult {
   workerEntry: string | null;
   assetsDirectory: string | null;
   assetsCount: number;
+}
+
+interface ScaffoldSource {
+  root: string;
+  label: string;
+  cleanup?: () => Promise<void>;
 }
 
 class CliError extends Error {
@@ -187,61 +197,59 @@ async function runCreate(args: string[], json: boolean): Promise<void> {
 async function runInit(args: string[], json: boolean): Promise<void> {
   const { dir } = parseDirOption(args, "init");
   const targetDir = path.resolve(process.cwd(), dir ?? ".");
-  const scaffoldRoot = getScaffoldRoot();
-
-  if (!(await pathExists(scaffoldRoot))) {
-    throw new CliError(`Default scaffold not found at ${scaffoldRoot}`, {
-      code: "SCAFFOLD_NOT_FOUND",
-    });
-  }
-
-  const sourceEntries = await listSourceEntries(scaffoldRoot);
+  const scaffold = await resolveDefaultScaffoldSource();
+  const sourceEntries = await listSourceEntries(scaffold.root);
   const conflicts: string[] = [];
 
-  for (const relativePath of sourceEntries) {
-    const destinationPath = path.join(targetDir, relativePath);
-    if (!(await pathExists(destinationPath))) {
-      continue;
+  try {
+    for (const relativePath of sourceEntries) {
+      const destinationPath = path.join(targetDir, relativePath);
+      if (!(await pathExists(destinationPath))) {
+        continue;
+      }
+
+      if (relativePath === CONFIG_FILE_NAME) {
+        continue;
+      }
+
+      conflicts.push(relativePath);
     }
 
-    if (relativePath === CONFIG_FILE_NAME) {
-      continue;
+    if (conflicts.length > 0) {
+      throw new CliError(
+        `Init would overwrite existing files: ${conflicts.slice(0, 5).join(", ")}${conflicts.length > 5 ? ", ..." : ""}`,
+        { code: "INIT_CONFLICT" },
+      );
     }
 
-    conflicts.push(relativePath);
-  }
+    await mkdir(targetDir, { recursive: true });
 
-  if (conflicts.length > 0) {
-    throw new CliError(
-      `Init would overwrite existing files: ${conflicts.slice(0, 5).join(", ")}${conflicts.length > 5 ? ", ..." : ""}`,
-      { code: "INIT_CONFLICT" },
-    );
-  }
+    for (const relativePath of sourceEntries) {
+      if (relativePath === CONFIG_FILE_NAME && (await pathExists(path.join(targetDir, relativePath)))) {
+        continue;
+      }
 
-  await mkdir(targetDir, { recursive: true });
-
-  for (const relativePath of sourceEntries) {
-    if (relativePath === CONFIG_FILE_NAME && (await pathExists(path.join(targetDir, relativePath)))) {
-      continue;
+      const sourcePath = path.join(scaffold.root, relativePath);
+      const destinationPath = path.join(targetDir, relativePath);
+      await mkdir(path.dirname(destinationPath), { recursive: true });
+      await cp(sourcePath, destinationPath, { recursive: true });
     }
 
-    const sourcePath = path.join(scaffoldRoot, relativePath);
-    const destinationPath = path.join(targetDir, relativePath);
-    await mkdir(path.dirname(destinationPath), { recursive: true });
-    await cp(sourcePath, destinationPath, { recursive: true });
-  }
+    if (json) {
+      writeJson({
+        success: true,
+        directory: targetDir,
+        scaffold: "default-app",
+        source: scaffold.label,
+      });
+      return;
+    }
 
-  if (json) {
-    writeJson({
-      success: true,
-      directory: targetDir,
-      scaffold: "default-app",
-    });
-    return;
+    process.stdout.write(`Initializing scaffold in ${targetDir} from ${scaffold.label}... done\n`);
+    process.stdout.write('Run "npm install" to install dependencies.\n');
+  } finally {
+    await scaffold.cleanup?.();
   }
-
-  process.stdout.write(`Initializing scaffold in ${targetDir}... done\n`);
-  process.stdout.write('Run "npm install" to install dependencies.\n');
 }
 
 async function runDeploy(args: string[], json: boolean): Promise<void> {
@@ -639,10 +647,70 @@ async function countFiles(targetPath: string): Promise<number> {
   return total;
 }
 
-function getScaffoldRoot(): string {
+function getBundledScaffoldRoot(): string {
   const currentFilePath = fileURLToPath(import.meta.url);
   const packageRoot = path.resolve(path.dirname(currentFilePath), "..");
   return path.resolve(packageRoot, "..", "scaffolds", "default-app");
+}
+
+async function resolveDefaultScaffoldSource(): Promise<ScaffoldSource> {
+  const configuredPath = process.env[DEFAULT_SCAFFOLD_PATH_ENV]?.trim();
+  if (configuredPath) {
+    const root = path.resolve(configuredPath);
+    if (!(await pathExists(root))) {
+      throw new CliError(
+        `${DEFAULT_SCAFFOLD_PATH_ENV} points to a missing directory: ${root}`,
+        { code: "SCAFFOLD_NOT_FOUND" },
+      );
+    }
+
+    return {
+      root,
+      label: root,
+    };
+  }
+
+  const bundledRoot = getBundledScaffoldRoot();
+  if (await pathExists(bundledRoot)) {
+    return {
+      root: bundledRoot,
+      label: bundledRoot,
+    };
+  }
+
+  return downloadDefaultScaffoldRepo();
+}
+
+async function downloadDefaultScaffoldRepo(): Promise<ScaffoldSource> {
+  const repoUrl = process.env[DEFAULT_SCAFFOLD_REPO_ENV]?.trim() || DEFAULT_SCAFFOLD_REPO_URL;
+  const repoRef = process.env[DEFAULT_SCAFFOLD_REF_ENV]?.trim();
+  const tempRoot = await mkdtemp(path.join(tmpdir(), "capy-scaffold-default-"));
+  const checkoutDir = path.join(tempRoot, "repo");
+  const gitArgs = ["clone", "--depth", "1"];
+
+  if (repoRef) {
+    gitArgs.push("--branch", repoRef);
+  }
+
+  gitArgs.push(repoUrl, checkoutDir);
+
+  try {
+    await execFileAsync("git", gitArgs);
+  } catch (error) {
+    await rm(tempRoot, { recursive: true, force: true });
+    throw new CliError(
+      `Failed to fetch default scaffold from ${repoUrl}. Configure ${DEFAULT_SCAFFOLD_PATH_ENV} for a local scaffold checkout if needed.`,
+      { code: "SCAFFOLD_FETCH_FAILED" },
+    );
+  }
+
+  return {
+    root: checkoutDir,
+    label: repoUrl,
+    cleanup: async () => {
+      await rm(tempRoot, { recursive: true, force: true });
+    },
+  };
 }
 
 function resolveInsideRoot(rootDir: string, relativePath: string, label: string): string {
@@ -757,6 +825,9 @@ Environment:
   CAPY_AUTH_TOKEN  Preferred token for API calls
   MANAGEMENT_API_TOKEN  Accepted fallback token name for API calls
   CAPY_USER_ID     Required for create
+  CAPY_DEFAULT_SCAFFOLD_PATH  Optional local scaffold path override for init
+  CAPY_DEFAULT_SCAFFOLD_REPO  Optional scaffold repo override for init
+  CAPY_DEFAULT_SCAFFOLD_REF   Optional git ref for scaffold repo clone
 `);
 }
 

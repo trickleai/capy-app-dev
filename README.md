@@ -2,6 +2,8 @@
 
 CLI for sandbox environments that wraps the capy app platform management APIs.
 
+This package is intended to be published from `https://github.com/trickleai/capy-app-dev.git`.
+
 In Happycapy, this CLI is meant to be called by the agent as part of the normal app-development flow. Users should describe the app they want; the agent decides when to create, build, deploy, and check status.
 
 ## Commands
@@ -19,6 +21,9 @@ capy-app-dev status
 - `CAPY_AUTH_TOKEN` - preferred token name for API calls
 - `MANAGEMENT_API_TOKEN` - accepted fallback token name for API calls
 - `CAPY_USER_ID` - required for `create`
+- `CAPY_DEFAULT_SCAFFOLD_PATH` - optional local scaffold checkout override for `init`
+- `CAPY_DEFAULT_SCAFFOLD_REPO` - optional public scaffold repo override for `init`
+- `CAPY_DEFAULT_SCAFFOLD_REF` - optional git ref for the scaffold repo clone
 
 ## Local Development
 
@@ -30,3 +35,11 @@ node dist/index.js help
 ```
 
 This package includes a local `.npmrc` with `include=dev`, so `npm install` still installs the build toolchain in production-biased sandbox environments.
+
+## Default Scaffold
+
+By default, `capy-app-dev init` fetches the public scaffold repository:
+
+`https://github.com/trickleai/capy-scaffold-default.git`
+
+For monorepo or local development, set `CAPY_DEFAULT_SCAFFOLD_PATH` to a local scaffold checkout instead.
