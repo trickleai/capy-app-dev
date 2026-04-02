@@ -12,7 +12,8 @@ const DEFAULT_SCAFFOLD_REPO_URL = "https://github.com/trickleai/capy-scaffold-de
 const RESERVED_SUBDOMAINS = new Set(["www", "api", "admin", "dashboard", "docs", "status"]);
 const APP_NAME_PATTERN = /^[a-z0-9](?:[a-z0-9-]*[a-z0-9])?$/;
 const SCAFFOLD_IGNORE_NAMES = new Set([".DS_Store", "dist", "node_modules", ".git"]);
-const AUTH_TOKEN_ENV_NAMES = ["CAPY_AUTH_TOKEN", "MANAGEMENT_API_TOKEN"] as const;
+const LEGACY_AUTH_TOKEN_ENV_NAMES = ["CAPY_AUTH_TOKEN", "MANAGEMENT_API_TOKEN"] as const;
+const SANDBOX_SECRET_ENV_NAME = "CAPY_SECRET";
 const DEFAULT_SCAFFOLD_PATH_ENV = "CAPY_DEFAULT_SCAFFOLD_PATH";
 const DEFAULT_SCAFFOLD_REPO_ENV = "CAPY_DEFAULT_SCAFFOLD_REPO";
 const DEFAULT_SCAFFOLD_REF_ENV = "CAPY_DEFAULT_SCAFFOLD_REF";
@@ -55,6 +56,20 @@ interface CreateAppResponse {
 interface DeployResponse {
   success: true;
   deployment: DeploymentInfo;
+}
+
+interface SandboxIdentityResponse {
+  valid: boolean;
+  user_id?: string;
+  sandbox_id?: string;
+  issued_at?: string;
+}
+
+interface SandboxIdentity {
+  userId: string;
+  sandboxId: string;
+  issuedAt?: string;
+  token: string;
 }
 
 interface DeployManifest {
@@ -101,6 +116,8 @@ class ApiError extends CliError {
     this.status = status;
   }
 }
+
+let cachedSandboxIdentity: SandboxIdentity | null = null;
 
 async function main(): Promise<void> {
   const { json, args } = extractJsonFlag(process.argv.slice(2));
@@ -156,7 +173,7 @@ async function runCreate(args: string[], json: boolean): Promise<void> {
     );
   }
 
-  const api = getApiContext({ requireUserId: true });
+  const api = await getApiContext({ requireUserId: true });
   if (!api.userId) {
     throw new CliError("CAPY_USER_ID is required for create", {
       code: "MISSING_USER_ID",
@@ -254,7 +271,7 @@ async function runInit(args: string[], json: boolean): Promise<void> {
 
 async function runDeploy(args: string[], json: boolean): Promise<void> {
   const { dir } = parseDirOption(args, "deploy");
-  const api = getApiContext();
+  const api = await getApiContext();
   const config = await readProjectConfig(process.cwd());
   const buildDir = path.resolve(process.cwd(), dir ?? "dist");
   const deployPackage = await createDeployArchive(buildDir);
@@ -318,7 +335,7 @@ async function runStatus(args: string[], json: boolean): Promise<void> {
     });
   }
 
-  const api = getApiContext();
+  const api = await getApiContext();
   const config = await readProjectConfig(process.cwd());
   const response = await apiRequest<AppStatusResponse>(api, {
     method: "GET",
@@ -373,22 +390,12 @@ function parseDirOption(args: string[], command: string): { dir?: string } {
   });
 }
 
-function getApiContext(options?: { requireUserId?: boolean }): {
+async function getApiContext(options?: { requireUserId?: boolean }): Promise<{
   baseUrl: URL;
   authToken: string;
   userId?: string;
-} {
+}> {
   const rawApiUrl = process.env.CAPY_API_URL?.trim() || DEFAULT_API_URL;
-  const authToken = getFirstConfiguredEnvValue(AUTH_TOKEN_ENV_NAMES);
-
-  if (!authToken) {
-    throw new CliError(
-      `One of these environment variables is required: ${AUTH_TOKEN_ENV_NAMES.join(", ")}`,
-      {
-      code: "MISSING_AUTH_TOKEN",
-      },
-    );
-  }
 
   let baseUrl: URL;
   try {
@@ -397,6 +404,26 @@ function getApiContext(options?: { requireUserId?: boolean }): {
     throw new CliError(`Invalid CAPY_API_URL: ${rawApiUrl}`, {
       code: "INVALID_API_URL",
     });
+  }
+
+  const sandboxSecret = process.env[SANDBOX_SECRET_ENV_NAME]?.trim();
+  if (sandboxSecret) {
+    const identity = await resolveSandboxIdentity(baseUrl, sandboxSecret);
+    return {
+      baseUrl,
+      authToken: identity.token,
+      userId: identity.userId,
+    };
+  }
+
+  const authToken = getFirstConfiguredEnvValue(LEGACY_AUTH_TOKEN_ENV_NAMES);
+  if (!authToken) {
+    throw new CliError(
+      `One of these environment variables is required: ${SANDBOX_SECRET_ENV_NAME}, ${LEGACY_AUTH_TOKEN_ENV_NAMES.join(", ")}`,
+      {
+        code: "MISSING_AUTH_TOKEN",
+      },
+    );
   }
 
   const userId = process.env.CAPY_USER_ID?.trim();
@@ -411,6 +438,61 @@ function getApiContext(options?: { requireUserId?: boolean }): {
     authToken,
     userId,
   };
+}
+
+async function resolveSandboxIdentity(
+  baseUrl: URL,
+  token: string,
+): Promise<SandboxIdentity> {
+  if (cachedSandboxIdentity?.token === token) {
+    return cachedSandboxIdentity;
+  }
+
+  const response = await fetch(new URL("/internal/validate-sandbox-token", baseUrl), {
+    method: "POST",
+    headers: {
+      accept: "application/json",
+      "content-type": "application/json",
+    },
+    body: JSON.stringify({ token }),
+  });
+
+  const rawText = await response.text();
+  const payload = parseJson(rawText);
+
+  if (!response.ok) {
+    const message = readApiErrorMessage(payload, response.status);
+    throw new CliError(message, {
+      code: response.status === 401 ? "AUTH_FAILED" : "VALIDATION_REQUEST_FAILED",
+    });
+  }
+
+  if (!isSandboxIdentityResponse(payload)) {
+    throw new CliError("Sandbox token validation returned an invalid response", {
+      code: "INVALID_API_RESPONSE",
+    });
+  }
+
+  if (!payload.valid) {
+    throw new CliError("Sandbox token is invalid", {
+      code: "AUTH_INVALID",
+    });
+  }
+
+  if (!payload.user_id || !payload.sandbox_id) {
+    throw new CliError("Sandbox token validation returned incomplete identity data", {
+      code: "INVALID_API_RESPONSE",
+    });
+  }
+
+  cachedSandboxIdentity = {
+    userId: payload.user_id,
+    sandboxId: payload.sandbox_id,
+    issuedAt: payload.issued_at,
+    token,
+  };
+
+  return cachedSandboxIdentity;
 }
 
 async function apiRequest<T>(
@@ -447,10 +529,7 @@ async function apiRequest<T>(
     const errorCode = isRecord(payload) && isRecord(payload.error) && typeof payload.error.code === "string"
       ? payload.error.code
       : `HTTP_${response.status}`;
-    const errorMessage =
-      isRecord(payload) && isRecord(payload.error) && typeof payload.error.message === "string"
-        ? payload.error.message
-        : `Request failed with status ${response.status}`;
+    const errorMessage = readApiErrorMessage(payload, response.status);
     throw new ApiError(response.status, errorCode, errorMessage);
   }
 
@@ -783,12 +862,46 @@ function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null && !Array.isArray(value);
 }
 
+function isSandboxIdentityResponse(value: unknown): value is SandboxIdentityResponse {
+  if (!isRecord(value) || typeof value.valid !== "boolean") {
+    return false;
+  }
+
+  if (value.user_id !== undefined && typeof value.user_id !== "string") {
+    return false;
+  }
+
+  if (value.sandbox_id !== undefined && typeof value.sandbox_id !== "string") {
+    return false;
+  }
+
+  if (value.issued_at !== undefined && typeof value.issued_at !== "string") {
+    return false;
+  }
+
+  return true;
+}
+
 function parseJson(rawValue: string): unknown {
   try {
     return JSON.parse(rawValue) as unknown;
   } catch {
     return null;
   }
+}
+
+function readApiErrorMessage(payload: unknown, status: number): string {
+  if (isRecord(payload)) {
+    if (isRecord(payload.error) && typeof payload.error.message === "string") {
+      return payload.error.message;
+    }
+
+    if (typeof payload.error === "string") {
+      return payload.error;
+    }
+  }
+
+  return `Request failed with status ${status}`;
 }
 
 function getFirstConfiguredEnvValue(names: readonly string[]): string | undefined {
@@ -822,9 +935,10 @@ Usage:
 
 Environment:
   CAPY_API_URL     Optional. Defaults to https://api.samdy.run
-  CAPY_AUTH_TOKEN  Preferred token for API calls
+  CAPY_SECRET      Preferred sandbox token for API calls
+  CAPY_AUTH_TOKEN  Legacy token for API calls
   MANAGEMENT_API_TOKEN  Accepted fallback token name for API calls
-  CAPY_USER_ID     Required for create
+  CAPY_USER_ID     Required for create when CAPY_SECRET is not set
   CAPY_DEFAULT_SCAFFOLD_PATH  Optional local scaffold path override for init
   CAPY_DEFAULT_SCAFFOLD_REPO  Optional scaffold repo override for init
   CAPY_DEFAULT_SCAFFOLD_REF   Optional git ref for scaffold repo clone

@@ -15,10 +15,10 @@ Do not wait for the user to explicitly say "deploy". The agent should decide to 
 
 ## Preconditions
 
-- `CAPY_AUTH_TOKEN` should be present in the environment
+- `CAPY_SECRET` should be present in sandbox environments and is the preferred token source
+- `CAPY_AUTH_TOKEN` is retained as a fallback token name for non-sandbox environments
 - `MANAGEMENT_API_TOKEN` is also accepted as a fallback token name
-- a sandbox-scoped token mapped from the worker secret `SANDBOX_API_TOKEN` is also valid
-- `CAPY_USER_ID` must be present for `create`
+- `CAPY_USER_ID` must be present for `create` only when `CAPY_SECRET` is not set
 - `CAPY_API_URL` is optional and defaults to `https://api.samdy.run`
 - the CLI should be built from `https://github.com/trickleai/capy-app-dev.git`
 - the default scaffold lives at `https://github.com/trickleai/capy-scaffold-default.git`

@@ -18,9 +18,10 @@ capy-app-dev status
 ## Environment Variables
 
 - `CAPY_API_URL` - optional, defaults to `https://api.samdy.run`
-- `CAPY_AUTH_TOKEN` - preferred token name for API calls
-- `MANAGEMENT_API_TOKEN` - accepted fallback token name for API calls
-- `CAPY_USER_ID` - required for `create`
+- `CAPY_SECRET` - preferred sandbox token name for API calls; used to resolve `user_id` automatically
+- `CAPY_AUTH_TOKEN` - legacy fallback token name for API calls outside sandbox environments
+- `MANAGEMENT_API_TOKEN` - accepted legacy fallback token name for API calls
+- `CAPY_USER_ID` - required for `create` only when `CAPY_SECRET` is not set
 - `CAPY_DEFAULT_SCAFFOLD_PATH` - optional local scaffold checkout override for `init`
 - `CAPY_DEFAULT_SCAFFOLD_REPO` - optional public scaffold repo override for `init`
 - `CAPY_DEFAULT_SCAFFOLD_REF` - optional git ref for the scaffold repo clone
