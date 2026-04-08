@@ -46,3 +46,26 @@ By default, `capy-app-dev init` fetches the public scaffold repository:
 For monorepo or local development, set `CAPY_DEFAULT_SCAFFOLD_PATH` to a local scaffold checkout instead.
 
 The default scaffold is expected to produce a self-contained client `index.html` so preview deployments do not rely on correct JS/CSS MIME handling from platform asset delivery.
+
+## Database Workflow
+
+If the build output `deploy.json` includes:
+
+```json
+{
+  "database": {
+    "migrations": "migrations"
+  }
+}
+```
+
+then `capy-app-dev deploy` will package that migrations directory together with the Worker and static assets. The platform will create or reuse the app's D1 database, apply pending migrations, and report the database result in both text and `--json` output.
+
+When using the default scaffold, the normal flow is:
+
+```bash
+npm install
+npm run db:generate
+npm run build
+capy-app-dev deploy
+```

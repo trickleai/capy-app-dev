@@ -30,6 +30,13 @@ interface DeploymentInfo {
   version: string;
   assetsCount: number;
   deployedAt: string;
+  database?: DeploymentDatabaseInfo;
+}
+
+interface DeploymentDatabaseInfo {
+  id: string;
+  name: string;
+  migrationsApplied: number;
 }
 
 interface AppStatusResponse {
@@ -41,7 +48,13 @@ interface AppStatusResponse {
     url: string;
     createdAt: string;
     deployment: DeploymentInfo | null;
+    database: AppDatabaseInfo | null;
   };
+}
+
+interface AppDatabaseInfo {
+  id: string;
+  name: string;
 }
 
 interface CreateAppResponse {
@@ -80,6 +93,9 @@ interface DeployManifest {
   assets?: {
     directory: string;
   };
+  database?: {
+    migrations: string;
+  };
 }
 
 interface DeployPackageResult {
@@ -89,6 +105,8 @@ interface DeployPackageResult {
   workerEntry: string | null;
   assetsDirectory: string | null;
   assetsCount: number;
+  databaseMigrationsDirectory: string | null;
+  databaseMigrationFiles: number;
 }
 
 interface ScaffoldSource {
@@ -300,6 +318,7 @@ async function runDeploy(args: string[], json: boolean): Promise<void> {
         version: response.deployment.version,
         assetsCount: response.deployment.assetsCount,
         deployedAt: response.deployment.deployedAt,
+        database: response.deployment.database ?? null,
       });
       return;
     }
@@ -317,11 +336,23 @@ async function runDeploy(args: string[], json: boolean): Promise<void> {
     } else {
       process.stdout.write("  Assets directory: none\n");
     }
+    if (deployPackage.databaseMigrationsDirectory) {
+      process.stdout.write(
+        `  Database migrations: ${deployPackage.databaseMigrationsDirectory} (${deployPackage.databaseMigrationFiles} files)\n`,
+      );
+    } else {
+      process.stdout.write("  Database migrations: none\n");
+    }
     process.stdout.write(`Deploying to ${config.appName}... done\n\n`);
     process.stdout.write("Deployment successful:\n");
     process.stdout.write(`  URL: ${response.deployment.url}\n`);
     process.stdout.write(`  Version: ${response.deployment.version}\n`);
     process.stdout.write(`  Assets: ${response.deployment.assetsCount} files\n`);
+    if (response.deployment.database) {
+      process.stdout.write(
+        `  Database: ${response.deployment.database.name} (${response.deployment.database.migrationsApplied} migrations applied)\n`,
+      );
+    }
   } finally {
     await rm(deployPackage.tempRoot, { recursive: true, force: true });
   }
@@ -349,6 +380,7 @@ async function runStatus(args: string[], json: boolean): Promise<void> {
       url: response.app.url,
       createdAt: response.app.createdAt,
       deployment: response.app.deployment,
+      database: response.app.database,
     });
     return;
   }
@@ -361,6 +393,9 @@ async function runStatus(args: string[], json: boolean): Promise<void> {
   );
   if (response.app.deployment) {
     process.stdout.write(`Version: ${response.app.deployment.version}\n`);
+  }
+  if (response.app.database) {
+    process.stdout.write(`Database: ${response.app.database.name}\n`);
   }
 }
 
@@ -635,6 +670,17 @@ async function createDeployArchive(buildDir: string): Promise<DeployPackageResul
     await copyRelativePath(buildDir, stageDir, manifest.assets.directory, copied);
   }
 
+  let databaseMigrationsDirectory: string | null = null;
+  let databaseMigrationFiles = 0;
+  if (manifest.database?.migrations) {
+    databaseMigrationsDirectory = manifest.database.migrations;
+    databaseMigrationFiles = await countDirectoryFiles(
+      resolveInsideRoot(buildDir, manifest.database.migrations, "database.migrations"),
+      "database.migrations",
+    );
+    await copyRelativePath(buildDir, stageDir, manifest.database.migrations, copied);
+  }
+
   try {
     await execFileAsync("tar", ["-czf", archivePath, "-C", stageDir, "."]);
   } catch (error) {
@@ -651,6 +697,8 @@ async function createDeployArchive(buildDir: string): Promise<DeployPackageResul
     workerEntry,
     assetsDirectory,
     assetsCount,
+    databaseMigrationsDirectory,
+    databaseMigrationFiles,
   };
 }
 
@@ -724,6 +772,23 @@ async function countFiles(targetPath: string): Promise<number> {
   }
 
   return total;
+}
+
+async function countDirectoryFiles(targetPath: string, label: string): Promise<number> {
+  const targetStats = await stat(targetPath).catch(() => null);
+  if (!targetStats) {
+    throw new CliError(`${label} is missing: ${targetPath}`, {
+      code: "MISSING_DEPLOY_ARTIFACT",
+    });
+  }
+
+  if (!targetStats.isDirectory()) {
+    throw new CliError(`${label} must point to a directory`, {
+      code: "INVALID_DEPLOY_MANIFEST",
+    });
+  }
+
+  return countFiles(targetPath);
 }
 
 function getBundledScaffoldRoot(): string {
@@ -851,6 +916,12 @@ function isDeployManifest(value: unknown): value is DeployManifest {
 
   if (value.assets !== undefined) {
     if (!isRecord(value.assets) || typeof value.assets.directory !== "string") {
+      return false;
+    }
+  }
+
+  if (value.database !== undefined) {
+    if (!isRecord(value.database) || typeof value.database.migrations !== "string") {
       return false;
     }
   }
