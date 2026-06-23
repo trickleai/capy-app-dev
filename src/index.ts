@@ -196,7 +196,7 @@ async function runCreate(args: string[], json: boolean): Promise<void> {
     });
   }
 
-  const appName = args[0]?.trim();
+  const appName = args[0].trim();
   if (!appName) {
     throw new CliError("app name is required", { code: "INVALID_APP_NAME", exitCode: 2 });
   }
@@ -660,7 +660,7 @@ async function readProjectConfig(cwd: string): Promise<ProjectConfig> {
 
 async function createDeployArchive(buildDir: string): Promise<DeployPackageResult> {
   const buildStats = await stat(buildDir).catch(() => null);
-  if (!buildStats || !buildStats.isDirectory()) {
+  if (!buildStats?.isDirectory()) {
     throw new CliError(`Build directory not found: ${buildDir}`, {
       code: "BUILD_DIR_NOT_FOUND",
     });
@@ -888,7 +888,7 @@ async function downloadDefaultScaffoldRepo(): Promise<ScaffoldSource> {
 
   try {
     await execFileAsync("git", gitArgs, { signal: AbortSignal.timeout(GIT_CLONE_TIMEOUT_MS) });
-  } catch (error) {
+  } catch {
     await rm(tempRoot, { recursive: true, force: true });
     throw new CliError(
       `Failed to fetch default scaffold from ${repoUrl}. Configure ${DEFAULT_SCAFFOLD_PATH_ENV} for a local scaffold checkout if needed.`,

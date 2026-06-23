@@ -17,13 +17,7 @@
   "linter": {
     "enabled": true,
     "rules": {
-      "preset": "recommended",
-      "complexity": {
-        "useOptionalChain": "warn"
-      },
-      "correctness": {
-        "noUnusedVariables": "warn"
-      }
+      "preset": "recommended"
     }
   },
   "assist": {
