@@ -9,9 +9,14 @@
   "scripts": {
     "build": "node build.mjs",
     "typecheck": "tsc --noEmit",
-    "test": "node --experimental-strip-types --test \"src/**/*.test.ts\""
+    "test": "node --experimental-strip-types --test \"src/**/*.test.ts\"",
+    "lint": "biome lint",
+    "format": "biome format --write",
+    "check": "biome check --write",
+    "ci": "biome ci"
   },
   "devDependencies": {
+    "@biomejs/biome": "2.5.0",
     "@types/node": "^24.3.0",
     "esbuild": "^0.27.0",
     "typescript": "^5.9.2"

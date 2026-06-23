@@ -31,11 +31,23 @@ capy-app-dev status
 ```bash
 npm install
 npm run typecheck
+npm test
 npm run build
 node dist/index.js help
 ```
 
 This package includes a local `.npmrc` with `include=dev`, so `npm install` still installs the build toolchain in production-biased sandbox environments.
+
+### Linting & formatting
+
+[Biome](https://biomejs.dev) handles both linting and formatting (single dev dependency, configured in `biome.json`):
+
+```bash
+npm run lint     # lint only
+npm run format   # format in place
+npm run check    # lint + format + organize imports, applying safe fixes
+npm run ci       # verify lint + format without writing (use in CI)
+```
 
 ## Default Scaffold
 
