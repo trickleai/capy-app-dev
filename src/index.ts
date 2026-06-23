@@ -198,11 +198,6 @@ async function runCreate(args: string[], json: boolean): Promise<void> {
   }
 
   const api = await getApiContext({ requireUserId: true });
-  if (!api.userId) {
-    throw new CliError("CAPY_USER_ID is required for create", {
-      code: "MISSING_USER_ID",
-    });
-  }
 
   const response = await apiRequest<CreateAppResponse>(api, {
     method: "POST",
