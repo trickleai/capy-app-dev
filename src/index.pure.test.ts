@@ -6,6 +6,7 @@ import {
   CliError,
   extractJsonFlag,
   getFirstConfiguredEnvValue,
+  hasHelpFlag,
   isDeployManifest,
   isRecord,
   isSandboxIdentityResponse,
@@ -28,6 +29,19 @@ describe("extractJsonFlag", () => {
 
   it("is false when absent and leaves args untouched", () => {
     assert.deepEqual(extractJsonFlag(["status"]), { json: false, args: ["status"] });
+  });
+});
+
+describe("hasHelpFlag", () => {
+  it("detects -h and --help anywhere in the args", () => {
+    assert.equal(hasHelpFlag(["-h"]), true);
+    assert.equal(hasHelpFlag(["--help"]), true);
+    assert.equal(hasHelpFlag(["--dir", "x", "-h"]), true);
+  });
+
+  it("is false when no help flag is present", () => {
+    assert.equal(hasHelpFlag([]), false);
+    assert.equal(hasHelpFlag(["my-app"]), false);
   });
 });
 

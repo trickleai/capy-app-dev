@@ -171,6 +171,13 @@ async function main(): Promise<void> {
     return;
   }
 
+  // `-h`/`--help` after a subcommand (e.g. `create -h`) shows usage instead of
+  // being misread as a positional argument.
+  if (hasHelpFlag(rest)) {
+    writeHelp();
+    return;
+  }
+
   try {
     switch (command) {
       case "create":
@@ -429,6 +436,11 @@ export function extractJsonFlag(args: string[]): { json: boolean; args: string[]
     json: args.includes("--json"),
     args: args.filter((arg) => arg !== "--json"),
   };
+}
+
+/** True if a `-h` or `--help` flag appears in the given args. */
+export function hasHelpFlag(args: string[]): boolean {
+  return args.includes("-h") || args.includes("--help");
 }
 
 export function parseDirOption(args: string[], command: string): { dir?: string } {
