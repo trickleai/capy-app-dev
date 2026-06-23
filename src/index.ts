@@ -166,6 +166,11 @@ async function main(): Promise<void> {
     return;
   }
 
+  if (command === "version" || command === "--version" || command === "-v") {
+    process.stdout.write(`${await readPackageVersion()}\n`);
+    return;
+  }
+
   try {
     switch (command) {
       case "create":
@@ -1055,6 +1060,29 @@ async function writeJsonFile(targetPath: string, value: unknown): Promise<void> 
   await writeFile(targetPath, `${JSON.stringify(value, null, 2)}\n`, "utf8");
 }
 
+/**
+ * Read the CLI version from package.json. Both the bundled `dist/index.js` and
+ * the source `src/index.ts` sit one level below the package root, so
+ * `../package.json` resolves correctly in production and in tests alike. Falls
+ * back to "unknown" if the file can't be read or parsed.
+ */
+export async function readPackageVersion(): Promise<string> {
+  try {
+    const packageJsonPath = path.resolve(
+      path.dirname(fileURLToPath(import.meta.url)),
+      "..",
+      "package.json",
+    );
+    const parsed = parseJson(await readFile(packageJsonPath, "utf8"));
+    if (parsed.ok && isRecord(parsed.value) && typeof parsed.value.version === "string") {
+      return parsed.value.version;
+    }
+  } catch {
+    // fall through to the fallback below
+  }
+  return "unknown";
+}
+
 function writeHelp(): void {
   process.stdout.write(`capy-app-dev
 
@@ -1063,6 +1091,7 @@ Usage:
   capy-app-dev init [--dir <path>] [--json]
   capy-app-dev deploy [--dir <path>] [--json]
   capy-app-dev status [--json]
+  capy-app-dev version
   capy-app-dev help
 
 Environment:

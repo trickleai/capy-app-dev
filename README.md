@@ -13,7 +13,10 @@ capy-app-dev create <app-name>
 capy-app-dev init [--dir <path>]
 capy-app-dev deploy [--dir <path>]
 capy-app-dev status
+capy-app-dev version   # also --version, -v
 ```
+
+Requires Node.js >= 22.
 
 ## Environment Variables
 
