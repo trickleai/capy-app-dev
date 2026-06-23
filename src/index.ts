@@ -1,4 +1,5 @@
 import { execFile } from "node:child_process";
+import { realpathSync } from "node:fs";
 import { cp, lstat, mkdir, mkdtemp, readFile, readdir, rm, stat, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
@@ -115,7 +116,7 @@ interface ScaffoldSource {
   cleanup?: () => Promise<void>;
 }
 
-class CliError extends Error {
+export class CliError extends Error {
   code: string;
   exitCode: number;
 
@@ -126,7 +127,7 @@ class CliError extends Error {
   }
 }
 
-class ApiError extends CliError {
+export class ApiError extends CliError {
   status: number;
 
   constructor(status: number, code: string, message: string) {
@@ -136,6 +137,11 @@ class ApiError extends CliError {
 }
 
 let cachedSandboxIdentity: SandboxIdentity | null = null;
+
+/** Test-only: clear the memoized sandbox identity so cases don't leak state. */
+export function resetSandboxIdentityCache(): void {
+  cachedSandboxIdentity = null;
+}
 
 async function main(): Promise<void> {
   const { json, args } = extractJsonFlag(process.argv.slice(2));
@@ -403,14 +409,14 @@ async function runStatus(args: string[], json: boolean): Promise<void> {
   }
 }
 
-function extractJsonFlag(args: string[]): { json: boolean; args: string[] } {
+export function extractJsonFlag(args: string[]): { json: boolean; args: string[] } {
   return {
     json: args.includes("--json"),
     args: args.filter((arg) => arg !== "--json"),
   };
 }
 
-function parseDirOption(args: string[], command: string): { dir?: string } {
+export function parseDirOption(args: string[], command: string): { dir?: string } {
   if (args.length === 0) {
     return {};
   }
@@ -429,7 +435,7 @@ function parseDirOption(args: string[], command: string): { dir?: string } {
   });
 }
 
-async function getApiContext(options?: { requireUserId?: boolean }): Promise<{
+export async function getApiContext(options?: { requireUserId?: boolean }): Promise<{
   baseUrl: URL;
   authToken: string;
   userId?: string;
@@ -479,7 +485,7 @@ async function getApiContext(options?: { requireUserId?: boolean }): Promise<{
   };
 }
 
-async function resolveSandboxIdentity(
+export async function resolveSandboxIdentity(
   baseUrl: URL,
   token: string,
 ): Promise<SandboxIdentity> {
@@ -534,7 +540,7 @@ async function resolveSandboxIdentity(
   return cachedSandboxIdentity;
 }
 
-async function apiRequest<T>(
+export async function apiRequest<T>(
   api: { baseUrl: URL; authToken: string },
   options: {
     method: string;
@@ -861,7 +867,7 @@ async function downloadDefaultScaffoldRepo(): Promise<ScaffoldSource> {
   };
 }
 
-function resolveInsideRoot(rootDir: string, relativePath: string, label: string): string {
+export function resolveInsideRoot(rootDir: string, relativePath: string, label: string): string {
   const resolvedPath = path.resolve(rootDir, relativePath);
   const normalizedRoot = `${rootDir}${path.sep}`;
 
@@ -874,11 +880,11 @@ function resolveInsideRoot(rootDir: string, relativePath: string, label: string)
   return resolvedPath;
 }
 
-function normalizeRelativePath(relativePath: string): string {
+export function normalizeRelativePath(relativePath: string): string {
   return relativePath.replace(/\\/g, "/").replace(/^\.\/+/, "");
 }
 
-function validateAppName(appName: string): void {
+export function validateAppName(appName: string): void {
   if (appName.length < 3 || appName.length > 63) {
     throw new CliError("App name must be 3-63 characters long", {
       code: "INVALID_APP_NAME",
@@ -899,7 +905,7 @@ function validateAppName(appName: string): void {
   }
 }
 
-function isDeployManifest(value: unknown): value is DeployManifest {
+export function isDeployManifest(value: unknown): value is DeployManifest {
   if (!isRecord(value)) {
     return false;
   }
@@ -933,11 +939,11 @@ function isDeployManifest(value: unknown): value is DeployManifest {
   return true;
 }
 
-function isRecord(value: unknown): value is Record<string, unknown> {
+export function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null && !Array.isArray(value);
 }
 
-function isSandboxIdentityResponse(value: unknown): value is SandboxIdentityResponse {
+export function isSandboxIdentityResponse(value: unknown): value is SandboxIdentityResponse {
   if (!isRecord(value) || typeof value.valid !== "boolean") {
     return false;
   }
@@ -957,7 +963,7 @@ function isSandboxIdentityResponse(value: unknown): value is SandboxIdentityResp
   return true;
 }
 
-function parseJson(rawValue: string): unknown {
+export function parseJson(rawValue: string): unknown {
   try {
     return JSON.parse(rawValue) as unknown;
   } catch {
@@ -965,7 +971,7 @@ function parseJson(rawValue: string): unknown {
   }
 }
 
-function readApiErrorMessage(payload: unknown, status: number): string {
+export function readApiErrorMessage(payload: unknown, status: number): string {
   if (isRecord(payload)) {
     if (isRecord(payload.error) && typeof payload.error.message === "string") {
       return payload.error.message;
@@ -979,7 +985,7 @@ function readApiErrorMessage(payload: unknown, status: number): string {
   return `Request failed with status ${status}`;
 }
 
-function getFirstConfiguredEnvValue(names: readonly string[]): string | undefined {
+export function getFirstConfiguredEnvValue(names: readonly string[]): string | undefined {
   for (const name of names) {
     const value = process.env[name]?.trim();
     if (value) {
@@ -1046,4 +1052,23 @@ function handleError(error: unknown, json: boolean): never {
   process.exit(cliError.exitCode);
 }
 
-void main();
+/**
+ * Only auto-run when this module is the process entry point. When imported by a
+ * test file the guard is false, so `main()` does not fire on import.
+ */
+function isMainModule(): boolean {
+  const entry = process.argv[1];
+  if (!entry) {
+    return false;
+  }
+
+  try {
+    return realpathSync(entry) === fileURLToPath(import.meta.url);
+  } catch {
+    return false;
+  }
+}
+
+if (isMainModule()) {
+  void main();
+}
