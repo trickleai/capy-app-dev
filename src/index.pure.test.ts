@@ -13,6 +13,7 @@ import {
   parseDirOption,
   parseJson,
   readApiErrorMessage,
+  readPackageVersion,
   resolveInsideRoot,
   validateAppName,
 } from "./index.ts";
@@ -217,5 +218,15 @@ describe("getFirstConfiguredEnvValue", () => {
 
   it("returns undefined when none set", () => {
     assert.equal(getFirstConfiguredEnvValue(["CAPY_TEST_ENV_MISSING_X"]), undefined);
+  });
+});
+
+describe("readPackageVersion", () => {
+  it("reads a semver-shaped version from package.json", async () => {
+    const version = await readPackageVersion();
+    // Reads the real package.json next to the source; must be a concrete version,
+    // never the "unknown" fallback.
+    assert.notEqual(version, "unknown");
+    assert.match(version, /^\d+\.\d+\.\d+/);
   });
 });
