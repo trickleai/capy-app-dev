@@ -1,0 +1,23 @@
+# Distribution hygiene for `git archive` / GitHub release tarballs.
+#
+# `export-ignore` strips engineering-only files from archives produced by
+# `git archive` and the auto-generated GitHub release tarballs. It does NOT
+# affect a full `git clone` — so anyone cloning the repo to build the CLI
+# (`npm install && npm run build`, as SKILL.md instructs) still gets everything.
+#
+# Only purely-engineering files are excluded here. The build inputs the skill
+# needs at consume time (src/, build.mjs, package.json, tsconfig.json, .npmrc,
+# SKILL.md, README.md) are deliberately KEPT, because dist/ is gitignored and
+# tarball consumers must build from source.
+
+# CI / repo automation — never executed on the consumer side
+/.github            export-ignore
+
+# Lint/format config — not needed to build or run the skill
+biome.json          export-ignore
+
+# Unit tests — not part of the shipped CLI
+src/**/*.test.ts    export-ignore
+
+# This file itself
+/.gitattributes     export-ignore
