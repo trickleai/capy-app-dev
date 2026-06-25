@@ -31,7 +31,10 @@ Requires Node.js >= 22.
 
 ## Local Development
 
+Requires Node.js >= 22 (see `.nvmrc`). With nvm/fnm:
+
 ```bash
+nvm use            # switches to the Node version pinned in .nvmrc
 npm install
 npm run typecheck
 npm test
