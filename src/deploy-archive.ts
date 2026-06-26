@@ -1,4 +1,4 @@
-import { mkdir, mkdtemp, readFile, stat } from "node:fs/promises";
+import { mkdir, mkdtemp, readFile, rm, stat } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
 
@@ -48,62 +48,73 @@ export async function createDeployArchive(buildDir: string): Promise<DeployPacka
   }
 
   const tempRoot = await mkdtemp(path.join(tmpdir(), "capy-app-dev-"));
-  const stageDir = path.join(tempRoot, "stage");
-  const archivePath = path.join(tempRoot, "deploy.tar.gz");
-  await mkdir(stageDir, { recursive: true });
 
-  const copied = new Set<string>();
-  await copyRelativePath(buildDir, stageDir, "deploy.json", copied);
-
-  let workerEntry: string | null = null;
-  if (manifest.worker?.entry) {
-    workerEntry = manifest.worker.entry;
-    await copyRelativePath(buildDir, stageDir, manifest.worker.entry, copied);
-  }
-
-  if (manifest.worker?.modules) {
-    for (const modulePath of manifest.worker.modules) {
-      await copyRelativePath(buildDir, stageDir, modulePath, copied);
-    }
-  }
-
-  let assetsDirectory: string | null = null;
-  let assetsCount = 0;
-  if (manifest.assets?.directory) {
-    assetsDirectory = manifest.assets.directory;
-    assetsCount = await countFiles(
-      resolveInsideRoot(buildDir, manifest.assets.directory, "assets.directory"),
-    );
-    await copyRelativePath(buildDir, stageDir, manifest.assets.directory, copied);
-  }
-
-  let databaseMigrationsDirectory: string | null = null;
-  let databaseMigrationFiles = 0;
-  if (manifest.database?.migrations) {
-    databaseMigrationsDirectory = manifest.database.migrations;
-    databaseMigrationFiles = await countDirectoryFiles(
-      resolveInsideRoot(buildDir, manifest.database.migrations, "database.migrations"),
-      "database.migrations",
-    );
-    await copyRelativePath(buildDir, stageDir, manifest.database.migrations, copied);
-  }
-
+  // From here on the temp dir exists on disk. If any step throws, clean it up
+  // before re-throwing — otherwise the orphaned dir leaks (the caller's cleanup
+  // only runs for a successfully returned tempRoot). On success the temp dir is
+  // intentionally kept; `runDeploy` reads the archive and removes it afterwards.
   try {
-    await execFileAsync("tar", ["-czf", archivePath, "-C", stageDir, "."]);
-  } catch (error) {
-    throw new CliError(error instanceof Error ? error.message : "Failed to create deploy archive", {
-      code: "ARCHIVE_CREATE_FAILED",
-    });
-  }
+    const stageDir = path.join(tempRoot, "stage");
+    const archivePath = path.join(tempRoot, "deploy.tar.gz");
+    await mkdir(stageDir, { recursive: true });
 
-  return {
-    archivePath,
-    archiveName: "deploy.tar.gz",
-    tempRoot,
-    workerEntry,
-    assetsDirectory,
-    assetsCount,
-    databaseMigrationsDirectory,
-    databaseMigrationFiles,
-  };
+    const copied = new Set<string>();
+    await copyRelativePath(buildDir, stageDir, "deploy.json", copied);
+
+    let workerEntry: string | null = null;
+    if (manifest.worker?.entry) {
+      workerEntry = manifest.worker.entry;
+      await copyRelativePath(buildDir, stageDir, manifest.worker.entry, copied);
+    }
+
+    if (manifest.worker?.modules) {
+      for (const modulePath of manifest.worker.modules) {
+        await copyRelativePath(buildDir, stageDir, modulePath, copied);
+      }
+    }
+
+    let assetsDirectory: string | null = null;
+    let assetsCount = 0;
+    if (manifest.assets?.directory) {
+      assetsDirectory = manifest.assets.directory;
+      assetsCount = await countFiles(
+        resolveInsideRoot(buildDir, manifest.assets.directory, "assets.directory"),
+      );
+      await copyRelativePath(buildDir, stageDir, manifest.assets.directory, copied);
+    }
+
+    let databaseMigrationsDirectory: string | null = null;
+    let databaseMigrationFiles = 0;
+    if (manifest.database?.migrations) {
+      databaseMigrationsDirectory = manifest.database.migrations;
+      databaseMigrationFiles = await countDirectoryFiles(
+        resolveInsideRoot(buildDir, manifest.database.migrations, "database.migrations"),
+        "database.migrations",
+      );
+      await copyRelativePath(buildDir, stageDir, manifest.database.migrations, copied);
+    }
+
+    try {
+      await execFileAsync("tar", ["-czf", archivePath, "-C", stageDir, "."]);
+    } catch (error) {
+      throw new CliError(
+        error instanceof Error ? error.message : "Failed to create deploy archive",
+        { code: "ARCHIVE_CREATE_FAILED" },
+      );
+    }
+
+    return {
+      archivePath,
+      archiveName: "deploy.tar.gz",
+      tempRoot,
+      workerEntry,
+      assetsDirectory,
+      assetsCount,
+      databaseMigrationsDirectory,
+      databaseMigrationFiles,
+    };
+  } catch (error) {
+    await rm(tempRoot, { recursive: true, force: true });
+    throw error;
+  }
 }
