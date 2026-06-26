@@ -12,10 +12,14 @@ export async function runInit(args: string[], json: boolean): Promise<void> {
   const { dir } = parseDirOption(args, "init");
   const targetDir = path.resolve(process.cwd(), dir ?? ".");
   const scaffold = await resolveDefaultScaffoldSource();
-  const sourceEntries = await listSourceEntries(scaffold.root);
-  const conflicts: string[] = [];
 
+  // `scaffold` may own a cloned temp dir (cleanup). Enter the try immediately so
+  // the finally also covers listSourceEntries — otherwise a failure there leaks
+  // the clone.
   try {
+    const sourceEntries = await listSourceEntries(scaffold.root);
+    const conflicts: string[] = [];
+
     for (const relativePath of sourceEntries) {
       const destinationPath = path.join(targetDir, relativePath);
       if (!(await pathExists(destinationPath))) {

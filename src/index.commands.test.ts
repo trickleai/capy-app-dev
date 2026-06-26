@@ -1,5 +1,6 @@
 import assert from "node:assert/strict";
-import { mkdtempSync, rmSync } from "node:fs";
+import { execFileSync } from "node:child_process";
+import { mkdtempSync, readdirSync, rmSync, writeFileSync } from "node:fs";
 import { mkdir, readFile, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
@@ -347,5 +348,39 @@ describe("runInit", () => {
       runInit([], false),
       (err: unknown) => err instanceof CliError && err.code === "SCAFFOLD_NOT_FOUND",
     );
+  });
+
+  // Regression for the scaffold clone temp-dir leak (audit M2). Uses a real
+  // local `file://` clone so the resolved scaffold owns a cleanup() that removes
+  // a `capy-scaffold-default-*` temp dir. After init, no such temp dir must
+  // remain — the fix moved listSourceEntries inside the try so its finally
+  // (cleanup) always runs.
+  it("cleans up the cloned scaffold temp dir after init (Bug M2)", async () => {
+    const TMP = tmpdir();
+    const before = new Set(readdirSync(TMP).filter((n) => n.startsWith("capy-scaffold-default-")));
+
+    // Build a local git repo to clone from (no network).
+    const repo = mkdtempSync(path.join(TMP, "m2-srcrepo-"));
+    try {
+      execFileSync("git", ["init", "-q"], { cwd: repo });
+      execFileSync("git", ["config", "user.email", "t@t.co"], { cwd: repo });
+      execFileSync("git", ["config", "user.name", "t"], { cwd: repo });
+      writeFileSync(path.join(repo, "package.json"), '{"name":"scaffold"}\n');
+      execFileSync("git", ["add", "-A"], { cwd: repo });
+      execFileSync("git", ["commit", "-qm", "init"], { cwd: repo });
+
+      delete process.env.CAPY_DEFAULT_SCAFFOLD_PATH; // force the clone path
+      process.env.CAPY_DEFAULT_SCAFFOLD_REPO = `file://${repo}`;
+
+      await capture(() => runInit([], false));
+
+      const after = readdirSync(TMP).filter(
+        (n) => n.startsWith("capy-scaffold-default-") && !before.has(n),
+      );
+      assert.equal(after.length, 0, `clone temp dir leaked: ${after.join(", ")}`);
+    } finally {
+      delete process.env.CAPY_DEFAULT_SCAFFOLD_REPO;
+      rmSync(repo, { recursive: true, force: true });
+    }
   });
 });
