@@ -235,6 +235,17 @@ describe("runDeploy", () => {
     );
   }
 
+  it("rejects an empty --dir with INVALID_USAGE instead of targeting cwd (Bug M1)", async () => {
+    // parseDirOption runs before any fs/network work, so no config/stub needed.
+    await assert.rejects(runDeploy(["--dir="], false), (err: unknown) => {
+      assert.ok(err instanceof CliError);
+      assert.equal(err.code, "INVALID_USAGE");
+      assert.equal(err.exitCode, 2);
+      return true;
+    });
+    assert.equal(calls.length, 0, "must not reach the API with an empty --dir");
+  });
+
   it("packages dist and deploys, printing the result", async () => {
     await writeConfig("demo-app");
     await stageDist();

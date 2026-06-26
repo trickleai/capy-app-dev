@@ -13,20 +13,31 @@ export function hasHelpFlag(args: string[]): boolean {
 }
 
 export function parseDirOption(args: string[], command: string): { dir?: string } {
+  const usageError = () =>
+    new CliError(`Usage: capy-app-dev ${command} [--dir <path>]`, {
+      code: "INVALID_USAGE",
+      exitCode: 2,
+    });
+
   if (args.length === 0) {
     return {};
   }
 
+  let value: string | undefined;
   if (args.length === 2 && args[0] === "--dir") {
-    return { dir: args[1] };
+    value = args[1];
+  } else if (args.length === 1 && args[0].startsWith("--dir=")) {
+    value = args[0].slice("--dir=".length);
+  } else {
+    throw usageError();
   }
 
-  if (args.length === 1 && args[0].startsWith("--dir=")) {
-    return { dir: args[0].slice("--dir=".length) };
+  // An explicitly-provided but empty/whitespace value (`--dir=` or `--dir ""`)
+  // would otherwise pass through `dir ?? default` and silently retarget to cwd.
+  // Reject it loudly instead of degrading to the wrong directory.
+  if (value.trim() === "") {
+    throw usageError();
   }
 
-  throw new CliError(`Usage: capy-app-dev ${command} [--dir <path>]`, {
-    code: "INVALID_USAGE",
-    exitCode: 2,
-  });
+  return { dir: value };
 }

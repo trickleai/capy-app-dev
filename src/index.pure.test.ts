@@ -72,6 +72,16 @@ describe("parseDirOption", () => {
       },
     );
   });
+
+  it("rejects an empty --dir value instead of silently using cwd (Bug M1)", () => {
+    const isUsageError = (err: unknown) =>
+      err instanceof CliError && err.code === "INVALID_USAGE" && err.exitCode === 2;
+    // Both the `--dir=` and `--dir ""` forms, plus whitespace-only.
+    assert.throws(() => parseDirOption(["--dir="], "deploy"), isUsageError);
+    assert.throws(() => parseDirOption(["--dir", ""], "deploy"), isUsageError);
+    assert.throws(() => parseDirOption(["--dir", "   "], "deploy"), isUsageError);
+    assert.throws(() => parseDirOption(["--dir=  "], "init"), isUsageError);
+  });
 });
 
 describe("validateAppName", () => {
