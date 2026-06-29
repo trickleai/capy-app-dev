@@ -263,7 +263,7 @@ describe("isCreateAppResponse", () => {
     assert.equal(
       isCreateAppResponse({
         success: true,
-        app: { appName: "demo", url: "https://demo.samdy.run", createdAt: "2026-01-01" },
+        app: { appName: "demo", url: "https://demo.happycapy.host", createdAt: "2026-01-01" },
       }),
       true,
     );
@@ -280,7 +280,7 @@ describe("isDeployResponse", () => {
   it("accepts a valid deploy response, with or without database", () => {
     const base = {
       appName: "demo",
-      url: "https://demo.samdy.run",
+      url: "https://demo.happycapy.host",
       version: "deploy-1",
       assetsCount: 2,
       deployedAt: "2026-01-01T00:00:00.000Z",
@@ -321,7 +321,7 @@ describe("isAppStatusResponse", () => {
         success: true,
         app: {
           appName: "demo",
-          url: "https://demo.samdy.run",
+          url: "https://demo.happycapy.host",
           createdAt: "2026-01-01",
           deployment: null,
           database: null,
@@ -336,11 +336,11 @@ describe("isAppStatusResponse", () => {
       isAppStatusResponse({
         app: {
           appName: "demo",
-          url: "https://demo.samdy.run",
+          url: "https://demo.happycapy.host",
           createdAt: "2026-01-01",
           deployment: {
             appName: "demo",
-            url: "https://demo.samdy.run",
+            url: "https://demo.happycapy.host",
             version: "v1",
             assetsCount: 3,
             deployedAt: "2026-01-02",

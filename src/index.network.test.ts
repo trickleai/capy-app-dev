@@ -209,7 +209,7 @@ describe("getApiContext (auth resolution order)", () => {
     const ctx = await getApiContext({ requireUserId: true });
     assert.equal(ctx.authToken, "secret-xyz");
     assert.equal(ctx.userId, "u-9");
-    assert.equal(ctx.baseUrl.origin, "https://api.samdy.run");
+    assert.equal(ctx.baseUrl.origin, "https://api.happycapy.host");
   });
 
   it("falls back to legacy token when no secret", async () => {

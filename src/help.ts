@@ -12,7 +12,8 @@ Usage:
   capy-app-dev help
 
 Environment:
-  CAPY_API_URL     Optional. Defaults to https://api.samdy.run
+  CAPY_API_URL     Optional. Defaults to the production API (https://api.happycapy.host).
+                   Set explicitly to target a non-production environment.
   CAPY_SECRET      Preferred sandbox token for API calls
   CAPY_AUTH_TOKEN  Legacy token for API calls
   MANAGEMENT_API_TOKEN  Accepted fallback token name for API calls

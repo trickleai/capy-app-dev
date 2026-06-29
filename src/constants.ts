@@ -1,5 +1,10 @@
 export const CONFIG_FILE_NAME = ".capy-app.json";
-export const DEFAULT_API_URL = "https://api.samdy.run";
+/**
+ * Production management API. This is the only baked-in base URL. To target a
+ * non-production environment, set the CAPY_API_URL environment variable
+ * explicitly — no development URL is hardcoded here.
+ */
+export const DEFAULT_API_URL = "https://api.happycapy.host";
 export const DEFAULT_SCAFFOLD_REPO_URL = "https://github.com/trickleai/capy-scaffold-default.git";
 export const RESERVED_SUBDOMAINS = new Set(["www", "api", "admin", "dashboard", "docs", "status"]);
 export const APP_NAME_PATTERN = /^[a-z0-9](?:[a-z0-9-]*[a-z0-9])?$/;

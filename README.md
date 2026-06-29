@@ -20,7 +20,7 @@ Requires Node.js >= 22.
 
 ## Environment Variables
 
-- `CAPY_API_URL` - optional, defaults to `https://api.samdy.run`
+- `CAPY_API_URL` - optional, defaults to the production API (`https://api.happycapy.host`). To test against a non-production environment, set this explicitly to that environment's API URL.
 - `CAPY_SECRET` - preferred sandbox token name for API calls; used to resolve `user_id` automatically
 - `CAPY_AUTH_TOKEN` - legacy fallback token name for API calls outside sandbox environments
 - `MANAGEMENT_API_TOKEN` - accepted legacy fallback token name for API calls
