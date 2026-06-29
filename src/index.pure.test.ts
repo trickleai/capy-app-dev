@@ -14,6 +14,7 @@ import {
   isDeployResponse,
   isRecord,
   isSandboxIdentityResponse,
+  isStringRecord,
   normalizeRelativePath,
   parseDirOption,
   parseJson,
@@ -183,6 +184,27 @@ describe("isRecord", () => {
     assert.equal(isRecord([]), false);
     assert.equal(isRecord(null), false);
     assert.equal(isRecord("s"), false);
+  });
+});
+
+describe("isStringRecord", () => {
+  it("accepts a flat object whose values are all strings (incl. empty object / empty string)", () => {
+    assert.equal(isStringRecord({}), true);
+    assert.equal(isStringRecord({ A: "1", B: "" }), true);
+  });
+
+  it("rejects non-objects, arrays, and null", () => {
+    assert.equal(isStringRecord("s"), false);
+    assert.equal(isStringRecord(42), false);
+    assert.equal(isStringRecord(null), false);
+    assert.equal(isStringRecord(["a"]), false);
+  });
+
+  it("rejects an object with any non-string value", () => {
+    assert.equal(isStringRecord({ A: "1", B: 2 }), false);
+    assert.equal(isStringRecord({ A: true }), false);
+    assert.equal(isStringRecord({ A: { nested: "x" } }), false);
+    assert.equal(isStringRecord({ A: null }), false);
   });
 });
 

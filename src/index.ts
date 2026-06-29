@@ -34,6 +34,7 @@ export {
   isDeployResponse,
   isRecord,
   isSandboxIdentityResponse,
+  isStringRecord,
 } from "./guards.ts";
 export { parseJson, readApiErrorMessage } from "./json.ts";
 export type { JsonParseResult } from "./types.ts";
