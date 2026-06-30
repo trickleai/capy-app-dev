@@ -6,7 +6,7 @@ import { tmpdir } from "node:os";
 import path from "node:path";
 import { afterEach, beforeEach, describe, it } from "node:test";
 
-import { CliError, runCreate, runDeploy, runInit, runStatus } from "./index.ts";
+import { ApiError, CliError, runCreate, runDeploy, runInit, runStatus } from "./index.ts";
 
 /**
  * Command-level (run*) integration tests. They exercise the real orchestration
@@ -219,6 +219,49 @@ describe("runCreate", () => {
       (err: unknown) => err instanceof CliError && err.code === "INVALID_APP_NAME",
     );
     assert.equal(calls.length, 0);
+  });
+
+  // Quota: the backend returns 402 APP_QUOTA_EXCEEDED when the account is at its
+  // plan's app limit. The CLI must surface code + message intact (so the agent
+  // can prompt an upgrade) and must NOT persist a config file for an app that
+  // was never created.
+  it("surfaces a 402 APP_QUOTA_EXCEEDED create error with code + message intact", async () => {
+    const quotaMessage = "App limit reached for your plan (3). Upgrade to create more apps.";
+    stubFetch(() =>
+      jsonResponse(
+        { success: false, error: { code: "APP_QUOTA_EXCEEDED", message: quotaMessage } },
+        402,
+      ),
+    );
+
+    await assert.rejects(runCreate(["over-limit"], false), (err: unknown) => {
+      assert.ok(err instanceof ApiError, `expected ApiError, got ${(err as Error)?.name}`);
+      assert.equal(err.code, "APP_QUOTA_EXCEEDED");
+      assert.equal(err.status, 402);
+      assert.equal(err.message, quotaMessage, "human-readable upgrade message must be preserved");
+      assert.notEqual(err.exitCode, 0, "must exit non-zero");
+      return true;
+    });
+
+    // No config written for an app that was rejected.
+    await assert.rejects(readFile(path.join(workDir, ".capy-app.json"), "utf8"));
+  });
+
+  it("preserves the quota error code + message on the --json path too", async () => {
+    const quotaMessage = "App limit reached for your plan (3). Upgrade to create more apps.";
+    stubFetch(() =>
+      jsonResponse(
+        { success: false, error: { code: "APP_QUOTA_EXCEEDED", message: quotaMessage } },
+        402,
+      ),
+    );
+
+    await assert.rejects(runCreate(["over-limit"], true), (err: unknown) => {
+      assert.ok(err instanceof ApiError);
+      assert.equal(err.code, "APP_QUOTA_EXCEEDED");
+      assert.equal(err.message, quotaMessage);
+      return true;
+    });
   });
 });
 

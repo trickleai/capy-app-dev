@@ -131,3 +131,33 @@ Append `--json` to `create`, `init`, `deploy`, or `status` when an agent needs s
 - After changing the default scaffold schema, run `npm run db:generate` before `npm run build`.
 - If `.capy-app.json` is missing, run `create` before `deploy` or `status`.
 - The agent should call this skill as part of the normal app-building flow, not as a separate user-driven deployment ceremony.
+
+## Handling errors
+
+Every command exits non-zero on failure and prints `Error: <message>`; with
+`--json` it prints `{ "success": false, "error": { "code", "message" } }`.
+Branch on `error.code`, not on message text. Two `create` errors need specific
+handling:
+
+### `APP_QUOTA_EXCEEDED` (HTTP 402) — plan limit reached
+
+`create` returns this when the account has reached the number of apps allowed by
+its current plan. Example message: `App limit reached for your plan (3). Upgrade
+to create more apps.`
+
+This is an **account/plan-level** limit (total active apps for the user or
+team), **not** a problem with the chosen app name. **Do not retry, and do not
+rename and retry — it will keep failing.** Instead, the agent should clearly
+tell the user they have hit their plan's app limit and **suggest upgrading their
+plan** to create more apps (or deleting an unused app to free a slot). Phrase it
+as a helpful next step, e.g. "You've reached the app limit for your current plan
+— upgrading your plan will let you deploy more apps." Surface the upgrade
+suggestion proactively whenever this error occurs.
+
+### `APP_NAME_TAKEN` (HTTP 409) — name already in use
+
+The chosen app name is taken. Unlike the quota error, this **is** fixed by
+choosing a different name: pick another unique app name and retry `create`.
+
+> Distinguish the two: **409 `APP_NAME_TAKEN` → rename and retry; 402
+> `APP_QUOTA_EXCEEDED` → stop and suggest a plan upgrade.**
