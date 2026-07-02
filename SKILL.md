@@ -72,7 +72,15 @@ object to `.capy-app.json` (string keys and string values only):
 On `deploy`, each entry under `env` is converted into a Cloudflare `plain_text`
 binding and sent in the deploy `config`, so the platform exposes it to the
 worker at runtime. The worker reads them via `env.APP_TITLE` (Hono:
-`c.env.APP_TITLE`). Redeploy always re-sends the current `env`.
+`c.env.APP_TITLE`).
+
+**Persistence is accumulate/merge, not replace.** The platform remembers env
+vars across deploys: a redeploy applies the keys present in this deploy's `env`
+(a supplied key overwrites its stored value) and **keeps** any previously-stored
+keys that are omitted this time. Dropping a key from `.capy-app.json`'s `env`
+therefore does **not** unset it on the worker — the last value stays live. To
+change a value, set it to the new value; there is currently no supported way to
+remove a binding by omitting it.
 
 These are **plain text** (visible in the Cloudflare dashboard) — use them for
 non-sensitive config only. Do not put secrets (API keys, tokens) here. Values
