@@ -79,16 +79,15 @@ vars across deploys: a redeploy applies the keys present in this deploy's `env`
 (a supplied key overwrites its stored value) and **keeps** any previously-stored
 keys that are omitted this time. Dropping a key from `.capy-app.json`'s `env`
 therefore does **not** unset it on the worker — the last value stays live. To
-change a value, set it to the new value; there is currently no supported way to
-remove a binding by omitting it.
+change a value, set it to the new value; to remove a binding, use
+`env unset <NAME>` (see "Managing env vars directly" below).
 
 > **Agent gotcha:** removing a key from `env` and redeploying will **not**
 > delete it — the previously-deployed value keeps serving, and you'll see the
 > "old" value stick around. This is expected, not a bug. Never rely on
-> "delete the key + redeploy" to clear or reset a variable; there is no
-> unset-by-omission. To change a variable, keep its key and set the new value;
-> to blank it, set it explicitly to `""` (an empty string is still a value, not
-> a removal).
+> "delete the key + redeploy" to clear a variable. To actually remove one, run
+> `env unset <NAME>` (it deletes the stored value; the worker stops serving it
+> on the next deploy). To change a value, set it to the new value.
 
 These are **plain text** (visible in the Cloudflare dashboard) — use them for
 non-sensitive config only. Do not put secrets (API keys, tokens) here. Values
@@ -158,9 +157,31 @@ it **requires `--yes`** — without it the command refuses with
 has clearly asked to delete/remove the app. `.capy-app.json` is left in place;
 remove it manually if the link is no longer needed.
 
+### Managing env vars directly
+
+Instead of hand-editing `.capy-app.json`'s `env` block, manage individual vars
+against the registry (the platform's source of truth):
+
+```bash
+node dist/index.js env list                 # show stored vars (NAME + value)
+node dist/index.js env set APP_TITLE "Hi"    # upsert one var
+node dist/index.js env unset APP_TITLE       # remove one var
+```
+
+These edit the **stored** env set and **take effect on the next `deploy`** (the
+platform merges the stored vars back into the worker's bindings at deploy time —
+they do not hot-update the running worker). `env set`/`env unset` also mirror the
+change into the local `.capy-app.json` so a later deploy won't merge a stale value
+back over it. `env unset` is the supported way to remove a var — omitting a key
+from `.capy-app.json` does not remove it (see the gotcha above). Same plain-text
+caveat applies: these are visible in the Cloudflare dashboard, so never store
+secrets here.
+
 ## Machine-readable output
 
-Append `--json` to `create`, `init`, `deploy`, `status`, `list`, or `delete` when an agent needs structured output.
+Append `--json` to `create`, `init`, `deploy`, `status`, `list`, `delete`, or the
+`env` subcommands (`env list` / `env set` / `env unset`) when an agent needs
+structured output.
 
 ## Notes
 

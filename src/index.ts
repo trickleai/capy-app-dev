@@ -5,6 +5,7 @@ import { extractJsonFlag, hasHelpFlag } from "./args.ts";
 import { runCreate } from "./commands/create.ts";
 import { runDelete } from "./commands/delete.ts";
 import { runDeploy } from "./commands/deploy.ts";
+import { runEnv } from "./commands/env.ts";
 import { runInit } from "./commands/init.ts";
 import { runList } from "./commands/list.ts";
 import { runStatus } from "./commands/status.ts";
@@ -23,6 +24,7 @@ export { extractJsonFlag, hasHelpFlag, parseDirOption } from "./args.ts";
 export { runCreate } from "./commands/create.ts";
 export { runDelete } from "./commands/delete.ts";
 export { buildDeployConfig, runDeploy } from "./commands/deploy.ts";
+export { runEnv } from "./commands/env.ts";
 export { runInit } from "./commands/init.ts";
 export { runList } from "./commands/list.ts";
 export { runStatus } from "./commands/status.ts";
@@ -36,6 +38,9 @@ export {
   isCreateAppResponse,
   isDeployManifest,
   isDeployResponse,
+  isEnvListResponse,
+  isEnvSetResponse,
+  isEnvUnsetResponse,
   isListAppsResponse,
   isRecord,
   isSandboxIdentityResponse,
@@ -85,6 +90,9 @@ async function main(): Promise<void> {
         return;
       case "delete":
         await runDelete(rest, json);
+        return;
+      case "env":
+        await runEnv(rest, json);
         return;
       default:
         throw new CliError(`Unknown command: ${command}`, { code: "INVALID_COMMAND", exitCode: 2 });

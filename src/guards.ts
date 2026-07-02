@@ -8,6 +8,9 @@ import type {
   DeploymentDatabaseInfo,
   DeploymentInfo,
   DeployResponse,
+  EnvListResponse,
+  EnvSetResponse,
+  EnvUnsetResponse,
   ListAppsResponse,
   SandboxIdentityResponse,
 } from "./types.ts";
@@ -175,6 +178,23 @@ function isAppSummary(value: unknown): value is AppSummary {
 
 export function isListAppsResponse(value: unknown): value is ListAppsResponse {
   return isRecord(value) && Array.isArray(value.apps) && value.apps.every(isAppSummary);
+}
+
+export function isEnvListResponse(value: unknown): value is EnvListResponse {
+  return isRecord(value) && typeof value.appName === "string" && isStringRecord(value.env);
+}
+
+export function isEnvSetResponse(value: unknown): value is EnvSetResponse {
+  return isRecord(value) && typeof value.appName === "string" && typeof value.name === "string";
+}
+
+export function isEnvUnsetResponse(value: unknown): value is EnvUnsetResponse {
+  return (
+    isRecord(value) &&
+    typeof value.appName === "string" &&
+    typeof value.name === "string" &&
+    typeof value.deleted === "boolean"
+  );
 }
 
 export function isAppStatusResponse(value: unknown): value is AppStatusResponse {
