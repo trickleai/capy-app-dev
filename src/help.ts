@@ -10,6 +10,9 @@ Usage:
   capy-app-dev status [--json]
   capy-app-dev list [--all] [--json]
   capy-app-dev delete [--yes] [--json]
+  capy-app-dev env list [--json]
+  capy-app-dev env set <NAME> <VALUE> [--json]
+  capy-app-dev env unset <NAME> [--json]
   capy-app-dev version
   capy-app-dev help
 

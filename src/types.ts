@@ -78,6 +78,28 @@ export interface ListAppsResponse {
   apps: AppSummary[];
 }
 
+/** `GET /api/apps/:appName/env` — the app's stored (decrypted) env vars. */
+export interface EnvListResponse {
+  success: true;
+  appName: string;
+  env: Record<string, string>;
+}
+
+/** `PUT /api/apps/:appName/env/:name` — one env var upserted on the registry. */
+export interface EnvSetResponse {
+  success: true;
+  appName: string;
+  name: string;
+}
+
+/** `DELETE /api/apps/:appName/env/:name` — idempotent single-var delete. */
+export interface EnvUnsetResponse {
+  success: true;
+  appName: string;
+  name: string;
+  deleted: boolean;
+}
+
 export interface SandboxIdentityResponse {
   valid: boolean;
   user_id?: string;

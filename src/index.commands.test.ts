@@ -12,6 +12,7 @@ import {
   runCreate,
   runDelete,
   runDeploy,
+  runEnv,
   runInit,
   runList,
   runStatus,
@@ -718,5 +719,146 @@ describe("runInit", () => {
       delete process.env.CAPY_DEFAULT_SCAFFOLD_REPO;
       rmSync(repo, { recursive: true, force: true });
     }
+  });
+});
+
+async function readConfig(): Promise<Record<string, unknown>> {
+  return JSON.parse(await readFile(path.join(workDir, ".capy-app.json"), "utf8"));
+}
+
+describe("runEnv", () => {
+  it("rejects an unknown subcommand with INVALID_USAGE (exit 2)", async () => {
+    await writeConfig("demo-app");
+    stubFetch(() => jsonResponse({}));
+    await assert.rejects(runEnv(["bogus"], false), (err: unknown) => {
+      assert.ok(err instanceof CliError);
+      assert.equal(err.code, "INVALID_USAGE");
+      assert.equal(err.exitCode, 2);
+      return true;
+    });
+    assert.equal(calls.length, 0);
+  });
+
+  it("env list GETs the env endpoint and prints a NAME/VALUE table", async () => {
+    await writeConfig("demo-app");
+    stubFetch(() =>
+      jsonResponse({ success: true, appName: "demo-app", env: { APP_TITLE: "Hi", MODE: "prod" } }),
+    );
+
+    const out = await capture(() => runEnv(["list"], false));
+
+    assert.equal(calls[0].init?.method, "GET");
+    assert.match(calls[0].url, /\/api\/apps\/demo-app\/env$/);
+    assert.match(out, /APP_TITLE\s+Hi/);
+    assert.match(out, /MODE\s+prod/);
+  });
+
+  it("env list emits a JSON envelope with --json", async () => {
+    await writeConfig("demo-app");
+    stubFetch(() => jsonResponse({ success: true, appName: "demo-app", env: { A: "1" } }));
+
+    const out = await capture(() => runEnv(["list"], true));
+    const parsed = JSON.parse(out);
+    assert.equal(parsed.success, true);
+    assert.deepEqual(parsed.env, { A: "1" });
+  });
+
+  it("env list prints a friendly message when there are no vars", async () => {
+    await writeConfig("demo-app");
+    stubFetch(() => jsonResponse({ success: true, appName: "demo-app", env: {} }));
+
+    const out = await capture(() => runEnv(["list"], false));
+    assert.match(out, /No env vars\./);
+  });
+
+  it("env set PUTs {value} and mirrors the var into .capy-app.json", async () => {
+    await writeConfig("demo-app");
+    stubFetch(() => jsonResponse({ success: true, appName: "demo-app", name: "APP_TITLE" }));
+
+    const out = await capture(() => runEnv(["set", "APP_TITLE", "Hello World"], false));
+
+    assert.equal(calls[0].init?.method, "PUT");
+    assert.match(calls[0].url, /\/api\/apps\/demo-app\/env\/APP_TITLE$/);
+    assert.equal(JSON.parse(String(calls[0].init?.body)).value, "Hello World");
+    assert.match(out, /Set env "APP_TITLE"/);
+    const cfg = await readConfig();
+    assert.deepEqual(cfg.env, { APP_TITLE: "Hello World" });
+  });
+
+  it("env set requires both NAME and VALUE (INVALID_USAGE, no network)", async () => {
+    await writeConfig("demo-app");
+    stubFetch(() => jsonResponse({}));
+    await assert.rejects(runEnv(["set", "ONLYNAME"], false), (err: unknown) => {
+      assert.ok(err instanceof CliError);
+      assert.equal(err.code, "INVALID_USAGE");
+      assert.equal(err.exitCode, 2);
+      return true;
+    });
+    assert.equal(calls.length, 0);
+  });
+
+  it("env unset DELETEs and removes the key from .capy-app.json", async () => {
+    await writeFile(
+      path.join(workDir, ".capy-app.json"),
+      JSON.stringify({
+        appName: "demo-app",
+        url: "https://demo-app.example",
+        env: { APP_TITLE: "Hi", MODE: "prod" },
+      }),
+    );
+    stubFetch(() =>
+      jsonResponse({ success: true, appName: "demo-app", name: "APP_TITLE", deleted: true }),
+    );
+
+    const out = await capture(() => runEnv(["unset", "APP_TITLE"], true));
+
+    assert.equal(calls[0].init?.method, "DELETE");
+    assert.match(calls[0].url, /\/api\/apps\/demo-app\/env\/APP_TITLE$/);
+    const parsed = JSON.parse(out);
+    assert.equal(parsed.deleted, true);
+    const cfg = await readConfig();
+    assert.deepEqual(cfg.env, { MODE: "prod" });
+  });
+
+  it("env unset drops the env field entirely when it becomes empty", async () => {
+    await writeFile(
+      path.join(workDir, ".capy-app.json"),
+      JSON.stringify({
+        appName: "demo-app",
+        url: "https://demo-app.example",
+        env: { APP_TITLE: "Hi" },
+      }),
+    );
+    stubFetch(() =>
+      jsonResponse({ success: true, appName: "demo-app", name: "APP_TITLE", deleted: true }),
+    );
+
+    await capture(() => runEnv(["unset", "APP_TITLE"], false));
+    const cfg = await readConfig();
+    assert.equal("env" in cfg, false, "empty env should be omitted, not left as {}");
+  });
+
+  it("passes through a 404 APP_NOT_FOUND from the backend", async () => {
+    await writeConfig("demo-app");
+    stubFetch(() =>
+      jsonResponse(
+        { success: false, error: { code: "APP_NOT_FOUND", message: "App not found" } },
+        404,
+      ),
+    );
+    await assert.rejects(runEnv(["list"], false), (err: unknown) => {
+      assert.ok(err instanceof ApiError);
+      assert.equal(err.code, "APP_NOT_FOUND");
+      assert.equal(err.status, 404);
+      return true;
+    });
+  });
+
+  it("throws MISSING_PROJECT_CONFIG when there is no .capy-app.json", async () => {
+    stubFetch(() => jsonResponse({}));
+    await assert.rejects(
+      runEnv(["list"], false),
+      (err: unknown) => err instanceof CliError && err.code === "MISSING_PROJECT_CONFIG",
+    );
   });
 });
