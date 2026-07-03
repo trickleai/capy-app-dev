@@ -31,7 +31,7 @@ When the user explicitly asks for a database or persistence, treat D1-backed per
 3. If the task already has a repo or template requirement, clone/copy that source instead.
 4. If the user requires a database, implement the app against Cloudflare D1 via `c.env.DB`, define the schema with Drizzle, and generate migrations.
 5. Generate or choose a unique app name and create the remote app record before deploy.
-6. Build the project and deploy the build output through the platform API.
+6. Build the project, then deploy the build output through the platform API. **Always commit and git-tag each deploy** (see Command Workflow step 5) so every deployment is a recoverable version — do this automatically, without waiting for the user to ask.
 7. Verify the deployment result and app status show database metadata when D1 was required.
 8. Return the preview URL and deployment status to the user.
 
@@ -74,13 +74,30 @@ The bundled CLI package and default scaffold both include a local `.npmrc` with 
 
 If the user asked for a database, do not skip `npm run db:generate` after schema work.
 
-5. Deploy the build output:
+5. Deploy the build output. **Always follow this three-step sequence** so every
+   deploy is a recoverable version (this is mandatory, not optional — it is how
+   the platform's rollback stays usable; see "Versioned deploy workflow"):
 
-```bash
-node dist/index.js deploy
-```
+   **a. Commit the working tree first.** Init a repo on the very first deploy:
+   ```bash
+   git init -q                                   # first deploy only
+   git add -A && git commit -q -m "deploy: <short description>"
+   ```
 
-By default the CLI deploys from `./dist`. Use `--dir <path>` for a different build output directory.
+   **b. Deploy:**
+   ```bash
+   node dist/index.js deploy --json
+   ```
+   (Deploys from `./dist` by default; use `--dir <path>` for another output dir.)
+
+   **c. Tag the commit with the returned `deployId`:**
+   ```bash
+   git tag "v-<deployId>"                         # deployId from the deploy --json output
+   ```
+
+   Do these three every time you deploy — no exceptions. It keeps the sandbox's
+   local code (and `.capy-app.json`, including its `env`) aligned with each
+   server-side version, so a later `rollback` can be mirrored locally.
 
 6. Check the current remote status:
 
@@ -156,6 +173,31 @@ node dist/index.js publish abc123      # promote specific version to live
 node dist/index.js rollback abc123     # roll back to a specific version
 node dist/index.js versions            # list all versions
 ```
+
+### Git tags mirror rollback locally
+
+Because you commit + `git tag "v-<deployId>"` on every deploy (step 5 of the
+Command Workflow), each server-side version has a matching local tag. `rollback`
+only re-points the live URL server-side and does **not** touch sandbox code, so
+after rolling back, check out the tag to bring the local project back in step:
+
+```bash
+node dist/index.js rollback <deployId> --json
+git checkout "v-<deployId>"
+```
+
+Notes:
+- The sandbox git repo is **session-local** — tags do not persist across sandboxes.
+- `.capy-app.json` (including its `env` block) is tracked by git, so
+  `git checkout v-<deployId>` also restores that version's local env config — and
+  because `env set`/`env unset` mirror into `.capy-app.json`, the local file is a
+  faithful record to check out. A later `deploy` still applies the
+  accumulate/merge semantics above (it re-applies the checked-out env over the
+  server's stored vars), so this re-applies that version's env rather than
+  resetting the server to an exact snapshot.
+- Redeploying after a rollback uploads the **current** working tree, which
+  supersedes the rolled-back version. Roll back to stop the bleeding, fix forward,
+  then deploy again.
 
 ## Machine-readable output
 
