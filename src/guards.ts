@@ -12,7 +12,11 @@ import type {
   EnvSetResponse,
   EnvUnsetResponse,
   ListAppsResponse,
+  PublishResponse,
+  RollbackResponse,
   SandboxIdentityResponse,
+  VersionEntry,
+  VersionsResponse,
 } from "./types.ts";
 
 export function isRecord(value: unknown): value is Record<string, unknown> {
@@ -138,7 +142,52 @@ export function isCreateAppResponse(value: unknown): value is CreateAppResponse 
 }
 
 export function isDeployResponse(value: unknown): value is DeployResponse {
-  return isRecord(value) && isDeploymentInfo(value.deployment);
+  return (
+    isRecord(value) &&
+    isDeploymentInfo(value.deployment) &&
+    typeof value.previewUrl === "string" &&
+    typeof value.deployId === "string" &&
+    typeof value.published === "boolean"
+  );
+}
+
+export function isPublishResponse(value: unknown): value is PublishResponse {
+  return (
+    isRecord(value) &&
+    typeof value.appName === "string" &&
+    typeof value.deployId === "string" &&
+    typeof value.url === "string"
+  );
+}
+
+export function isRollbackResponse(value: unknown): value is RollbackResponse {
+  return (
+    isRecord(value) &&
+    typeof value.appName === "string" &&
+    typeof value.deployId === "string" &&
+    typeof value.url === "string"
+  );
+}
+
+function isVersionEntry(value: unknown): value is VersionEntry {
+  return (
+    isRecord(value) &&
+    typeof value.deployId === "string" &&
+    typeof value.version === "string" &&
+    typeof value.workerName === "string" &&
+    typeof value.status === "string" &&
+    typeof value.previewUrl === "string" &&
+    typeof value.createdAt === "string"
+  );
+}
+
+export function isVersionsResponse(value: unknown): value is VersionsResponse {
+  return (
+    isRecord(value) &&
+    typeof value.appName === "string" &&
+    Array.isArray(value.versions) &&
+    value.versions.every(isVersionEntry)
+  );
 }
 
 export function isDeleteResponse(value: unknown): value is DeleteResponse {

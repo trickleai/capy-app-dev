@@ -335,11 +335,17 @@ describe("isDeployResponse", () => {
       assetsCount: 2,
       deployedAt: "2026-01-01T00:00:00.000Z",
     };
-    assert.equal(isDeployResponse({ success: true, deployment: base }), true);
+    const extras = {
+      previewUrl: "https://demo--abc.happycapy.host",
+      deployId: "abc",
+      published: false,
+    };
+    assert.equal(isDeployResponse({ success: true, deployment: base, ...extras }), true);
     assert.equal(
       isDeployResponse({
         success: true,
         deployment: { ...base, database: { id: "d", name: "db", migrationsApplied: 2 } },
+        ...extras,
       }),
       true,
     );

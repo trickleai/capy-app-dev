@@ -13,6 +13,9 @@ Usage:
   capy-app-dev env list [--json]
   capy-app-dev env set <NAME> <VALUE> [--json]
   capy-app-dev env unset <NAME> [--json]
+  capy-app-dev publish [deployId] [--json]
+  capy-app-dev rollback <deployId> [--json]
+  capy-app-dev versions [--json]
   capy-app-dev version
   capy-app-dev help
 

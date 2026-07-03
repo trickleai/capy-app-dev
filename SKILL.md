@@ -177,11 +177,45 @@ from `.capy-app.json` does not remove it (see the gotcha above). Same plain-text
 caveat applies: these are visible in the Cloudflare dashboard, so never store
 secrets here.
 
+## Versioned deploy workflow
+
+capy-app uses a preview-first deploy model:
+
+1. **deploy** — uploads the new version. The **first-ever deploy auto-publishes**
+   (live immediately; no need to call `publish`). Subsequent deploys are
+   **preview-only**: accessible at `previewUrl` but the live URL is unchanged.
+2. **publish [deployId]** — promotes a preview version to live. Omit `deployId`
+   to publish the latest preview; pass an explicit `deployId` to publish a
+   specific version.
+3. **rollback \<deployId\>** — restores a previously-live version. Requires an
+   explicit `deployId` (find one with `versions`). **Does not roll back data**
+   — the D1 database is unchanged.
+4. **versions** — lists all deployment versions with their status, preview URL,
+   and timestamp.
+
+```bash
+# Deploy (preview-only after first deploy)
+node dist/index.js deploy
+
+# Promote the latest preview to live
+node dist/index.js publish
+
+# Promote a specific version to live
+node dist/index.js publish abc123
+
+# Roll back to a specific version
+node dist/index.js rollback abc123
+
+# List all versions
+node dist/index.js versions
+node dist/index.js versions --json
+```
+
 ## Machine-readable output
 
-Append `--json` to `create`, `init`, `deploy`, `status`, `list`, `delete`, or the
-`env` subcommands (`env list` / `env set` / `env unset`) when an agent needs
-structured output.
+Append `--json` to `create`, `init`, `deploy`, `status`, `list`, `delete`,
+`publish`, `rollback`, `versions`, or the `env` subcommands (`env list` /
+`env set` / `env unset`) when an agent needs structured output.
 
 ## Notes
 

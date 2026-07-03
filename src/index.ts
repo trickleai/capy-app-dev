@@ -8,7 +8,10 @@ import { runDeploy } from "./commands/deploy.ts";
 import { runEnv } from "./commands/env.ts";
 import { runInit } from "./commands/init.ts";
 import { runList } from "./commands/list.ts";
+import { runPublish } from "./commands/publish.ts";
+import { runRollback } from "./commands/rollback.ts";
 import { runStatus } from "./commands/status.ts";
+import { runVersions } from "./commands/versions.ts";
 import { readPackageVersion } from "./env.ts";
 import { CliError } from "./errors.ts";
 import { handleError, writeHelp } from "./help.ts";
@@ -27,7 +30,10 @@ export { buildDeployConfig, runDeploy } from "./commands/deploy.ts";
 export { runEnv } from "./commands/env.ts";
 export { runInit } from "./commands/init.ts";
 export { runList } from "./commands/list.ts";
+export { runPublish } from "./commands/publish.ts";
+export { runRollback } from "./commands/rollback.ts";
 export { runStatus } from "./commands/status.ts";
+export { runVersions } from "./commands/versions.ts";
 export { getFirstConfiguredEnvValue, readPackageVersion } from "./env.ts";
 // Public surface — re-exported so consumers (and the test suite) can keep
 // importing every symbol from "./index.ts" after the split into modules.
@@ -42,9 +48,12 @@ export {
   isEnvSetResponse,
   isEnvUnsetResponse,
   isListAppsResponse,
+  isPublishResponse,
   isRecord,
+  isRollbackResponse,
   isSandboxIdentityResponse,
   isStringRecord,
+  isVersionsResponse,
 } from "./guards.ts";
 export { parseJson, readApiErrorMessage } from "./json.ts";
 export type { JsonParseResult } from "./types.ts";
@@ -93,6 +102,15 @@ async function main(): Promise<void> {
         return;
       case "env":
         await runEnv(rest, json);
+        return;
+      case "publish":
+        await runPublish(rest, json);
+        return;
+      case "rollback":
+        await runRollback(rest, json);
+        return;
+      case "versions":
+        await runVersions(rest, json);
         return;
       default:
         throw new CliError(`Unknown command: ${command}`, { code: "INVALID_COMMAND", exitCode: 2 });

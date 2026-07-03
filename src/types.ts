@@ -55,6 +55,38 @@ export interface CreateAppResponse {
 export interface DeployResponse {
   success: true;
   deployment: DeploymentInfo;
+  previewUrl: string;
+  deployId: string;
+  published: boolean;
+}
+
+export interface PublishResponse {
+  success: true;
+  appName: string;
+  deployId: string;
+  url: string;
+}
+
+export interface RollbackResponse {
+  success: true;
+  appName: string;
+  deployId: string;
+  url: string;
+}
+
+export interface VersionEntry {
+  deployId: string;
+  version: string;
+  workerName: string;
+  status: string;
+  previewUrl: string;
+  createdAt: string;
+}
+
+export interface VersionsResponse {
+  success: true;
+  appName: string;
+  versions: VersionEntry[];
 }
 
 export interface DeleteResponse {

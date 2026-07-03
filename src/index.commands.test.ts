@@ -15,7 +15,10 @@ import {
   runEnv,
   runInit,
   runList,
+  runPublish,
+  runRollback,
   runStatus,
+  runVersions,
 } from "./index.ts";
 
 /**
@@ -509,6 +512,9 @@ describe("runDeploy", () => {
           assetsCount: 1,
           deployedAt: "2026-04-04",
         },
+        previewUrl: "https://demo-app--abc123.example",
+        deployId: "abc123",
+        published: true,
       }),
     );
 
@@ -519,6 +525,7 @@ describe("runDeploy", () => {
     assert.ok(calls[0].init?.body instanceof FormData, "deploy uploads multipart FormData");
     assert.match(out, /Deployment successful/);
     assert.match(out, /Version: v7/);
+    assert.match(out, /Deployed demo-app — live at/);
   });
 
   it("throws MISSING_DEPLOY_MANIFEST when dist/deploy.json is absent", async () => {
@@ -560,6 +567,9 @@ describe("runDeploy", () => {
         assetsCount: 1,
         deployedAt: "2026-05-05",
       },
+      previewUrl: "https://demo-app--xyz.example",
+      deployId: "xyz",
+      published: false,
     });
 
   it("uploads env vars as plain_text bindings in the `config` field", async () => {
@@ -860,5 +870,224 @@ describe("runEnv", () => {
       runEnv(["list"], false),
       (err: unknown) => err instanceof CliError && err.code === "MISSING_PROJECT_CONFIG",
     );
+  });
+});
+
+describe("runPublish", () => {
+  it("POSTs to /publish with empty body when no deployId given and prints result", async () => {
+    await writeConfig("demo-app");
+    stubFetch(() =>
+      jsonResponse({
+        success: true,
+        appName: "demo-app",
+        deployId: "abc123",
+        url: "https://demo-app.example",
+      }),
+    );
+
+    const out = await capture(() => runPublish([], false));
+
+    assert.equal(calls[0].init?.method, "POST");
+    assert.match(calls[0].url, /\/api\/apps\/demo-app\/publish$/);
+    assert.deepEqual(JSON.parse(String(calls[0].init?.body)), {});
+    assert.match(out, /Published demo-app — live at https:\/\/demo-app\.example/);
+  });
+
+  it("POSTs with {deployId} when deployId arg provided", async () => {
+    await writeConfig("demo-app");
+    stubFetch(() =>
+      jsonResponse({
+        success: true,
+        appName: "demo-app",
+        deployId: "abc123",
+        url: "https://demo-app.example",
+      }),
+    );
+
+    await capture(() => runPublish(["abc123"], false));
+
+    assert.deepEqual(JSON.parse(String(calls[0].init?.body)), { deployId: "abc123" });
+  });
+
+  it("emits JSON envelope with --json", async () => {
+    await writeConfig("demo-app");
+    stubFetch(() =>
+      jsonResponse({
+        success: true,
+        appName: "demo-app",
+        deployId: "abc123",
+        url: "https://demo-app.example",
+      }),
+    );
+
+    const out = await capture(() => runPublish([], true));
+    const parsed = JSON.parse(out);
+    assert.equal(parsed.success, true);
+    assert.equal(parsed.appName, "demo-app");
+    assert.equal(parsed.deployId, "abc123");
+  });
+
+  it("rejects extra positional args with INVALID_USAGE (exit 2)", async () => {
+    await writeConfig("demo-app");
+    stubFetch(() => jsonResponse({}));
+
+    await assert.rejects(runPublish(["id1", "id2"], false), (err: unknown) => {
+      assert.ok(err instanceof CliError);
+      assert.equal(err.code, "INVALID_USAGE");
+      assert.equal(err.exitCode, 2);
+      return true;
+    });
+    assert.equal(calls.length, 0);
+  });
+
+  it("throws MISSING_PROJECT_CONFIG when there is no .capy-app.json", async () => {
+    stubFetch(() => jsonResponse({}));
+    await assert.rejects(
+      runPublish([], false),
+      (err: unknown) => err instanceof CliError && err.code === "MISSING_PROJECT_CONFIG",
+    );
+  });
+});
+
+describe("runRollback", () => {
+  it("POSTs to /rollback with {deployId} and prints result", async () => {
+    await writeConfig("demo-app");
+    stubFetch(() =>
+      jsonResponse({
+        success: true,
+        appName: "demo-app",
+        deployId: "abc123",
+        url: "https://demo-app.example",
+      }),
+    );
+
+    const out = await capture(() => runRollback(["abc123"], false));
+
+    assert.equal(calls[0].init?.method, "POST");
+    assert.match(calls[0].url, /\/api\/apps\/demo-app\/rollback$/);
+    assert.deepEqual(JSON.parse(String(calls[0].init?.body)), { deployId: "abc123" });
+    assert.match(out, /Rolled back demo-app to abc123 — live at https:\/\/demo-app\.example/);
+  });
+
+  it("rejects missing deployId with INVALID_USAGE (exit 2), no network call", async () => {
+    await writeConfig("demo-app");
+    stubFetch(() => jsonResponse({}));
+
+    await assert.rejects(runRollback([], false), (err: unknown) => {
+      assert.ok(err instanceof CliError);
+      assert.equal(err.code, "INVALID_USAGE");
+      assert.equal(err.exitCode, 2);
+      return true;
+    });
+    assert.equal(calls.length, 0);
+  });
+
+  it("rejects extra positional args with INVALID_USAGE (exit 2)", async () => {
+    await writeConfig("demo-app");
+    stubFetch(() => jsonResponse({}));
+
+    await assert.rejects(runRollback(["id1", "id2"], false), (err: unknown) => {
+      assert.ok(err instanceof CliError);
+      assert.equal(err.code, "INVALID_USAGE");
+      assert.equal(err.exitCode, 2);
+      return true;
+    });
+    assert.equal(calls.length, 0);
+  });
+
+  it("emits JSON envelope with --json", async () => {
+    await writeConfig("demo-app");
+    stubFetch(() =>
+      jsonResponse({
+        success: true,
+        appName: "demo-app",
+        deployId: "abc123",
+        url: "https://demo-app.example",
+      }),
+    );
+
+    const out = await capture(() => runRollback(["abc123"], true));
+    const parsed = JSON.parse(out);
+    assert.equal(parsed.success, true);
+    assert.equal(parsed.deployId, "abc123");
+    assert.equal(parsed.url, "https://demo-app.example");
+  });
+});
+
+describe("runVersions", () => {
+  it("GETs /versions and prints a table", async () => {
+    await writeConfig("demo-app");
+    stubFetch(() =>
+      jsonResponse({
+        success: true,
+        appName: "demo-app",
+        versions: [
+          {
+            deployId: "abc123",
+            version: "deploy-v1",
+            workerName: "demo-app--abc123",
+            status: "live",
+            previewUrl: "https://demo-app--abc123.example",
+            createdAt: "2026-07-01T00:00:00Z",
+          },
+        ],
+      }),
+    );
+
+    const out = await capture(() => runVersions([], false));
+
+    assert.equal(calls[0].init?.method, "GET");
+    assert.match(calls[0].url, /\/api\/apps\/demo-app\/versions$/);
+    assert.match(out, /DEPLOY_ID/);
+    assert.match(out, /abc123/);
+    assert.match(out, /live/);
+  });
+
+  it("prints 'No versions.' for empty list", async () => {
+    await writeConfig("demo-app");
+    stubFetch(() => jsonResponse({ success: true, appName: "demo-app", versions: [] }));
+
+    const out = await capture(() => runVersions([], false));
+    assert.match(out, /No versions\./);
+  });
+
+  it("emits JSON envelope with --json", async () => {
+    await writeConfig("demo-app");
+    stubFetch(() =>
+      jsonResponse({
+        success: true,
+        appName: "demo-app",
+        versions: [
+          {
+            deployId: "abc123",
+            version: "deploy-v1",
+            workerName: "demo-app--abc123",
+            status: "live",
+            previewUrl: "https://demo-app--abc123.example",
+            createdAt: "2026-07-01T00:00:00Z",
+          },
+        ],
+      }),
+    );
+
+    const out = await capture(() => runVersions([], true));
+    const parsed = JSON.parse(out);
+    assert.equal(parsed.success, true);
+    assert.equal(parsed.appName, "demo-app");
+    assert.equal(parsed.versions.length, 1);
+    assert.equal(parsed.versions[0].deployId, "abc123");
+  });
+
+  it("rejects extra positional args with INVALID_USAGE (exit 2)", async () => {
+    await writeConfig("demo-app");
+    stubFetch(() => jsonResponse({}));
+
+    await assert.rejects(runVersions(["extra"], false), (err: unknown) => {
+      assert.ok(err instanceof CliError);
+      assert.equal(err.code, "INVALID_USAGE");
+      assert.equal(err.exitCode, 2);
+      return true;
+    });
+    assert.equal(calls.length, 0);
   });
 });

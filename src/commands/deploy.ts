@@ -106,18 +106,29 @@ export async function runDeploy(args: string[], json: boolean): Promise<void> {
         assetsCount: response.deployment.assetsCount,
         deployedAt: response.deployment.deployedAt,
         database: response.deployment.database ?? null,
+        previewUrl: response.previewUrl,
+        deployId: response.deployId,
+        published: response.published,
       });
       return;
     }
 
     process.stdout.write("Done\n\n");
     process.stdout.write("Deployment successful:\n");
-    process.stdout.write(`  URL: ${response.deployment.url}\n`);
     process.stdout.write(`  Version: ${response.deployment.version}\n`);
     process.stdout.write(`  Assets: ${response.deployment.assetsCount} files\n`);
     if (response.deployment.database) {
       process.stdout.write(
         `  Database: ${response.deployment.database.name} (${response.deployment.database.migrationsApplied} migrations applied)\n`,
+      );
+    }
+    if (response.published) {
+      process.stdout.write(
+        `Deployed ${response.deployment.appName} — live at ${response.deployment.url}\nPreview: ${response.previewUrl}\n`,
+      );
+    } else {
+      process.stdout.write(
+        `Deployed ${response.deployment.appName} — preview at ${response.previewUrl}\nLive site unchanged. Run \`publish\` to go live.\n`,
       );
     }
   } finally {
