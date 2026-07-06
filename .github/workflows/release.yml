@@ -29,10 +29,12 @@ jobs:
       - name: Rename asset
         run: cp dist/index.js dist/capy-app-dev.js
 
-      - name: Upload release asset
+      - name: Upload release assets
         uses: softprops/action-gh-release@v2
         with:
-          files: dist/capy-app-dev.js
+          files: |
+            dist/capy-app-dev.js
+            SKILL.md
           name: ${{ github.ref_name }}
           fail_on_unmatched_files: true
         env:
