@@ -17,6 +17,7 @@ import {
   runList,
   runPublish,
   runRollback,
+  runSecret,
   runStatus,
   runVersions,
 } from "./index.ts";
@@ -45,6 +46,22 @@ async function capture(fn: () => Promise<void>): Promise<string> {
     process.stdout.write = realStdoutWrite;
   }
   return out;
+}
+
+// ---- stderr capture ----------------------------------------------------------
+const realStderrWrite = process.stderr.write.bind(process.stderr);
+async function captureStderr(fn: () => Promise<void>): Promise<string> {
+  let err = "";
+  process.stderr.write = ((chunk: string | Uint8Array) => {
+    err += typeof chunk === "string" ? chunk : Buffer.from(chunk).toString("utf8");
+    return true;
+  }) as typeof process.stderr.write;
+  try {
+    await fn();
+  } finally {
+    process.stderr.write = realStderrWrite;
+  }
+  return err;
 }
 
 // ---- fetch stub --------------------------------------------------------------
@@ -88,6 +105,7 @@ beforeEach(() => {
 
 afterEach(() => {
   process.stdout.write = realStdoutWrite; // safety net if a test threw mid-capture
+  process.stderr.write = realStderrWrite; // safety net if a test threw mid-capture
   globalThis.fetch = realFetch;
   process.chdir(originalCwd);
   rmSync(workDir, { recursive: true, force: true });
@@ -868,6 +886,154 @@ describe("runEnv", () => {
     stubFetch(() => jsonResponse({}));
     await assert.rejects(
       runEnv(["list"], false),
+      (err: unknown) => err instanceof CliError && err.code === "MISSING_PROJECT_CONFIG",
+    );
+  });
+
+  it("prints a deprecation warning to stderr when called", async () => {
+    await writeConfig("demo-app");
+    stubFetch(() => jsonResponse({ success: true, appName: "demo-app", env: { A: "1" } }));
+
+    const err = await captureStderr(() => capture(() => runEnv(["list"], false)).then(() => {}));
+    assert.match(
+      err,
+      /Warning: 'capy-app-dev env' is deprecated; use 'capy-app-dev secret' instead\./,
+    );
+  });
+});
+
+describe("runSecret", () => {
+  it("rejects an unknown subcommand with INVALID_USAGE (exit 2)", async () => {
+    await writeConfig("demo-app");
+    stubFetch(() => jsonResponse({}));
+    await assert.rejects(runSecret(["bogus"], false), (err: unknown) => {
+      assert.ok(err instanceof CliError);
+      assert.equal(err.code, "INVALID_USAGE");
+      assert.equal(err.exitCode, 2);
+      return true;
+    });
+    assert.equal(calls.length, 0);
+  });
+
+  it("secret list GETs the env endpoint and prints a NAME/VALUE table", async () => {
+    await writeConfig("demo-app");
+    stubFetch(() =>
+      jsonResponse({ success: true, appName: "demo-app", env: { APP_TITLE: "Hi", MODE: "prod" } }),
+    );
+
+    const out = await capture(() => runSecret(["list"], false));
+
+    assert.equal(calls[0].init?.method, "GET");
+    assert.match(calls[0].url, /\/api\/apps\/demo-app\/env$/);
+    assert.match(out, /APP_TITLE\s+Hi/);
+    assert.match(out, /MODE\s+prod/);
+  });
+
+  it("secret list emits a JSON envelope with --json", async () => {
+    await writeConfig("demo-app");
+    stubFetch(() => jsonResponse({ success: true, appName: "demo-app", env: { A: "1" } }));
+
+    const out = await capture(() => runSecret(["list"], true));
+    const parsed = JSON.parse(out);
+    assert.equal(parsed.success, true);
+    assert.deepEqual(parsed.env, { A: "1" });
+  });
+
+  it("secret list prints a friendly message when there are no vars", async () => {
+    await writeConfig("demo-app");
+    stubFetch(() => jsonResponse({ success: true, appName: "demo-app", env: {} }));
+
+    const out = await capture(() => runSecret(["list"], false));
+    assert.match(out, /No env vars\./);
+  });
+
+  it("secret set PUTs {value} and mirrors the var into .capy-app.json", async () => {
+    await writeConfig("demo-app");
+    stubFetch(() => jsonResponse({ success: true, appName: "demo-app", name: "APP_TITLE" }));
+
+    const out = await capture(() => runSecret(["set", "APP_TITLE", "Hello World"], false));
+
+    assert.equal(calls[0].init?.method, "PUT");
+    assert.match(calls[0].url, /\/api\/apps\/demo-app\/env\/APP_TITLE$/);
+    assert.equal(JSON.parse(String(calls[0].init?.body)).value, "Hello World");
+    assert.match(out, /Set env "APP_TITLE"/);
+    const cfg = await readConfig();
+    assert.deepEqual(cfg.env, { APP_TITLE: "Hello World" });
+  });
+
+  it("secret set requires both NAME and VALUE (INVALID_USAGE, no network)", async () => {
+    await writeConfig("demo-app");
+    stubFetch(() => jsonResponse({}));
+    await assert.rejects(runSecret(["set", "ONLYNAME"], false), (err: unknown) => {
+      assert.ok(err instanceof CliError);
+      assert.equal(err.code, "INVALID_USAGE");
+      assert.equal(err.exitCode, 2);
+      return true;
+    });
+    assert.equal(calls.length, 0);
+  });
+
+  it("secret unset DELETEs and removes the key from .capy-app.json", async () => {
+    await writeFile(
+      path.join(workDir, ".capy-app.json"),
+      JSON.stringify({
+        appName: "demo-app",
+        url: "https://demo-app.example",
+        env: { APP_TITLE: "Hi", MODE: "prod" },
+      }),
+    );
+    stubFetch(() =>
+      jsonResponse({ success: true, appName: "demo-app", name: "APP_TITLE", deleted: true }),
+    );
+
+    const out = await capture(() => runSecret(["unset", "APP_TITLE"], true));
+
+    assert.equal(calls[0].init?.method, "DELETE");
+    assert.match(calls[0].url, /\/api\/apps\/demo-app\/env\/APP_TITLE$/);
+    const parsed = JSON.parse(out);
+    assert.equal(parsed.deleted, true);
+    const cfg = await readConfig();
+    assert.deepEqual(cfg.env, { MODE: "prod" });
+  });
+
+  it("secret unset drops the env field entirely when it becomes empty", async () => {
+    await writeFile(
+      path.join(workDir, ".capy-app.json"),
+      JSON.stringify({
+        appName: "demo-app",
+        url: "https://demo-app.example",
+        env: { APP_TITLE: "Hi" },
+      }),
+    );
+    stubFetch(() =>
+      jsonResponse({ success: true, appName: "demo-app", name: "APP_TITLE", deleted: true }),
+    );
+
+    await capture(() => runSecret(["unset", "APP_TITLE"], false));
+    const cfg = await readConfig();
+    assert.equal("env" in cfg, false, "empty env should be omitted, not left as {}");
+  });
+
+  it("passes through a 404 APP_NOT_FOUND from the backend", async () => {
+    await writeConfig("demo-app");
+    stubFetch(() =>
+      jsonResponse(
+        { success: false, error: { code: "APP_NOT_FOUND", message: "App not found" } },
+        404,
+      ),
+    );
+    await assert.rejects(runSecret(["list"], false), (err: unknown) => {
+      assert.ok(err instanceof ApiError);
+      assert.equal(err.code, "APP_NOT_FOUND");
+      assert.equal(err.status, 404);
+      return true;
+    });
+  });
+
+  it("throws MISSING_PROJECT_CONFIG when there is no .capy-app.json", async () => {
+    stubFetch(() => jsonResponse({}));
+    await assert.rejects(
+      runSecret(["list"], false),
       (err: unknown) => err instanceof CliError && err.code === "MISSING_PROJECT_CONFIG",
     );
   });

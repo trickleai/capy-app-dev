@@ -16,6 +16,9 @@ import type { EnvListResponse, EnvSetResponse, EnvUnsetResponse, ProjectConfig }
  * `list` / `set <NAME> <VALUE>` / `unset <NAME>`.
  */
 export async function runEnv(args: string[], json: boolean): Promise<void> {
+  process.stderr.write(
+    "Warning: 'capy-app-dev env' is deprecated; use 'capy-app-dev secret' instead.\n",
+  );
   const [sub, ...rest] = args;
   switch (sub) {
     case "list":
@@ -36,7 +39,7 @@ export async function runEnv(args: string[], json: boolean): Promise<void> {
 }
 
 /** `env list` — GET the app's stored env vars and print them (table or --json). */
-async function runEnvList(rest: string[], json: boolean): Promise<void> {
+export async function runEnvList(rest: string[], json: boolean): Promise<void> {
   if (rest.length > 0) {
     throw new CliError("Usage: capy-app-dev env list [--json]", {
       code: "INVALID_USAGE",
@@ -95,7 +98,7 @@ function writeHumanTable(entries: [string, string][]): void {
  * back over it. VALUE may contain spaces/`=`: the shell already collapsed it into
  * one argument, so it is taken verbatim (no `NAME=VALUE` splitting).
  */
-async function runEnvSet(rest: string[], json: boolean): Promise<void> {
+export async function runEnvSet(rest: string[], json: boolean): Promise<void> {
   if (rest.length < 2) {
     throw new CliError("Usage: capy-app-dev env set <NAME> <VALUE> [--json]", {
       code: "INVALID_USAGE",
@@ -136,7 +139,7 @@ async function runEnvSet(rest: string[], json: boolean): Promise<void> {
  * remove it from the local `.capy-app.json`. If the local `env` becomes empty the
  * field is dropped entirely, matching the deploy path's "omit when empty" shape.
  */
-async function runEnvUnset(rest: string[], json: boolean): Promise<void> {
+export async function runEnvUnset(rest: string[], json: boolean): Promise<void> {
   if (rest.length < 1) {
     throw new CliError("Usage: capy-app-dev env unset <NAME> [--json]", {
       code: "INVALID_USAGE",

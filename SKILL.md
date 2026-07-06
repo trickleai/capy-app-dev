@@ -124,9 +124,11 @@ node dist/index.js delete --yes
 
 `delete` removes the deployed worker and routing (URL stops serving), but preserves the registry record, app name, and D1 data. Requires `--yes`; without it the command refuses with `CONFIRMATION_REQUIRED` and makes no network call.
 
-## Managing env vars
+## Managing secrets
 
 Env vars are **plain text** (visible in the Cloudflare dashboard) — non-sensitive config only, no secrets. Values must be **strings**; a non-string value in `.capy-app.json`'s `env` fails with `INVALID_PROJECT_CONFIG`.
+
+> **Note:** The `env` command is a deprecated alias for `secret`. Use `secret` for all new workflows.
 
 **Two ways to set them:**
 
@@ -141,16 +143,16 @@ Option A — via `.capy-app.json` (applied on next `deploy`):
 
 Option B — directly against the registry (snapshotted into the worker's bindings at the next `deploy` or `publish`):
 ```bash
-node dist/index.js env list                  # show stored vars (NAME + value)
-node dist/index.js env set APP_TITLE "Hi"    # upsert one var
-node dist/index.js env unset APP_TITLE       # remove one var
+node dist/index.js secret list                  # show stored vars (NAME + value)
+node dist/index.js secret set APP_TITLE "Hi"    # upsert one var
+node dist/index.js secret unset APP_TITLE       # remove one var
 ```
 
-**Persistence is accumulate/merge.** A deploy overwrites keys it sends and keeps any previously-stored keys that are omitted. `env unset` is the supported way to remove a var — omitting a key from `.capy-app.json` does not remove it.
+**Persistence is accumulate/merge.** A deploy overwrites keys it sends and keeps any previously-stored keys that are omitted. `secret unset` is the supported way to remove a var — omitting a key from `.capy-app.json` does not remove it.
 
-**Env vars are snapshotted into the worker's bindings at deploy time.** The currently-live worker only sees the env that was active when it was deployed — `env set` and `.capy-app.json` edits do **not** hot-update the running worker; they take effect only on the next `deploy` (or `publish`).
+**Env vars are snapshotted into the worker's bindings at deploy time.** The currently-live worker only sees the env that was active when it was deployed — `secret set` and `.capy-app.json` edits do **not** hot-update the running worker; they take effect only on the next `deploy` (or `publish`).
 
-`env set`/`env unset` also mirror the change into `.capy-app.json` so a later deploy won't overwrite with a stale local value.
+`secret set`/`secret unset` also mirror the change into `.capy-app.json` so a later deploy won't overwrite with a stale local value.
 
 ## Versioned deploy workflow
 
@@ -192,7 +194,7 @@ Notes:
 - The sandbox git repo is **session-local** — tags do not persist across sandboxes.
 - `.capy-app.json` (including its `env` block) is tracked by git, so
   `git checkout v-<deployId>` also restores that version's local env config — and
-  because `env set`/`env unset` mirror into `.capy-app.json`, the local file is a
+  because `secret set`/`secret unset` mirror into `.capy-app.json`, the local file is a
   faithful record to check out. A later `deploy` still applies the
   accumulate/merge semantics above (it re-applies the checked-out env over the
   server's stored vars), so this re-applies that version's env rather than
@@ -204,7 +206,7 @@ Notes:
 ## Machine-readable output
 
 Append `--json` to any command (`create`, `init`, `deploy`, `status`, `list`,
-`delete`, `publish`, `rollback`, `versions`, `env list/set/unset`) for structured output.
+`delete`, `publish`, `rollback`, `versions`, `secret list/set/unset`) for structured output.
 
 ## Notes
 
