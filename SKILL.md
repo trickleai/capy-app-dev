@@ -37,11 +37,13 @@ When the user explicitly asks for a database or persistence, treat D1-backed per
 
 ## Command Workflow
 
-1. Build the CLI:
+1. Download the CLI (latest release):
 
 ```bash
-npm install
-npm run build
+mkdir -p dist
+curl -fsSL \
+  https://github.com/trickleai/capy-app-dev/releases/latest/download/capy-app-dev.js \
+  -o dist/index.js
 ```
 
 2. Create the remote app record:
