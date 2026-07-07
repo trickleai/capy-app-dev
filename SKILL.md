@@ -40,16 +40,19 @@ When the user explicitly asks for a database or persistence, treat D1-backed per
 1. Download the CLI (latest release):
 
 ```bash
-mkdir -p dist
+mkdir -p .capy-cli
 curl -fsSL \
   https://github.com/trickleai/capy-app-dev/releases/latest/download/capy-app-dev.js \
-  -o dist/index.js
+  -o .capy-cli/index.js
 ```
+
+The CLI lives in `.capy-cli/` (not `dist/`) so that `npm run build` — which
+clears and repopulates `dist/` — does not overwrite it.
 
 2. Create the remote app record:
 
 ```bash
-node dist/index.js create <app-name>
+node .capy-cli/index.js create <app-name>
 ```
 
 This writes `.capy-app.json` in the current directory.
@@ -57,7 +60,7 @@ This writes `.capy-app.json` in the current directory.
 3. Initialize the default scaffold if the project has not been created yet:
 
 ```bash
-node dist/index.js init
+node .capy-cli/index.js init
 ```
 
 By default `init` fetches the public default scaffold repository. For local development, `CAPY_DEFAULT_SCAFFOLD_PATH` can point at a local checkout instead.
@@ -88,7 +91,7 @@ If the user asked for a database, do not skip `npm run db:generate` after schema
 
    **b. Deploy:**
    ```bash
-   node dist/index.js deploy --json
+   node .capy-cli/index.js deploy --json
    ```
    (Deploys from `./dist` by default; use `--dir <path>` for another output dir.)
 
@@ -104,16 +107,16 @@ If the user asked for a database, do not skip `npm run db:generate` after schema
 6. Check the current remote status:
 
 ```bash
-node dist/index.js status
+node .capy-cli/index.js status
 ```
 
-When D1 is required, prefer `node dist/index.js deploy --json` and `node dist/index.js status --json` so the agent can verify that `database.id` and `database.name` were returned.
+When D1 is required, prefer `node .capy-cli/index.js deploy --json` and `node .capy-cli/index.js status --json` so the agent can verify that `database.id` and `database.name` were returned.
 
 7. List the account's apps:
 
 ```bash
-node dist/index.js list          # active apps only
-node dist/index.js list --all    # include suspended/deleted rows too
+node .capy-cli/index.js list          # active apps only
+node .capy-cli/index.js list --all    # include suspended/deleted rows too
 ```
 
 Ownership is scoped to the caller's account.
@@ -121,7 +124,7 @@ Ownership is scoped to the caller's account.
 8. Delete the app (destructive — requires explicit confirmation):
 
 ```bash
-node dist/index.js delete --yes
+node .capy-cli/index.js delete --yes
 ```
 
 `delete` removes the deployed worker and routing (URL stops serving), but preserves the registry record, app name, and D1 data. Requires `--yes`; without it the command refuses with `CONFIRMATION_REQUIRED` and makes no network call.
@@ -145,9 +148,9 @@ Option A — via `.capy-app.json` (applied on next `deploy`):
 
 Option B — directly against the registry (snapshotted into the worker's bindings at the next `deploy` or `publish`):
 ```bash
-node dist/index.js secret list                  # show stored vars (NAME + value)
-node dist/index.js secret set APP_TITLE "Hi"    # upsert one var
-node dist/index.js secret unset APP_TITLE       # remove one var
+node .capy-cli/index.js secret list                  # show stored vars (NAME + value)
+node .capy-cli/index.js secret set APP_TITLE "Hi"    # upsert one var
+node .capy-cli/index.js secret unset APP_TITLE       # remove one var
 ```
 
 **Persistence is accumulate/merge.** A deploy overwrites keys it sends and keeps any previously-stored keys that are omitted. `secret unset` is the supported way to remove a var — omitting a key from `.capy-app.json` does not remove it.
@@ -173,11 +176,11 @@ capy-app uses a preview-first deploy model:
    and timestamp.
 
 ```bash
-node dist/index.js deploy              # preview-only after first deploy
-node dist/index.js publish             # promote latest preview to live
-node dist/index.js publish abc123      # promote specific version to live
-node dist/index.js rollback abc123     # roll back to a specific version
-node dist/index.js versions            # list all versions
+node .capy-cli/index.js deploy              # preview-only after first deploy
+node .capy-cli/index.js publish             # promote latest preview to live
+node .capy-cli/index.js publish abc123      # promote specific version to live
+node .capy-cli/index.js rollback abc123     # roll back to a specific version
+node .capy-cli/index.js versions            # list all versions
 ```
 
 ### Git tags mirror rollback locally
@@ -188,7 +191,7 @@ only re-points the live URL server-side and does **not** touch sandbox code, so
 after rolling back, check out the tag to bring the local project back in step:
 
 ```bash
-node dist/index.js rollback <deployId> --json
+node .capy-cli/index.js rollback <deployId> --json
 git checkout "v-<deployId>"
 ```
 
