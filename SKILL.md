@@ -124,10 +124,19 @@ Ownership is scoped to the caller's account.
 8. Delete the app (destructive — requires explicit confirmation):
 
 ```bash
-node .capy-cli/index.js delete --yes
+node .capy-cli/index.js delete --yes               # soft-delete (default)
+node .capy-cli/index.js delete --hard --yes        # hard-delete (irreversible)
 ```
 
-`delete` removes the deployed worker and routing (URL stops serving), but preserves the registry record, app name, and D1 data. Requires `--yes`; without it the command refuses with `CONFIRMATION_REQUIRED` and makes no network call.
+**Soft-delete** (`--yes` only): removes the deployed worker and routing (URL stops
+serving immediately), but preserves the registry record, app name, and D1 data.
+The app name is locked and cannot be reused.
+
+**Hard-delete** (`--hard --yes`): irreversibly removes ALL resources — all version
+scripts, KV routing, the D1 database and its data, deployment history, env vars,
+and the registry row. The app name is released for reuse. **D1 data is permanently
+lost and cannot be recovered.** Both flags are required; `--hard` alone exits with
+`CONFIRMATION_REQUIRED` and makes no network call.
 
 ## Managing secrets
 
@@ -170,8 +179,10 @@ capy-app uses a preview-first deploy model:
    to publish the latest preview; pass an explicit `deployId` to publish a
    specific version.
 3. **rollback \<deployId\>** — restores a previously-live version. Requires an
-   explicit `deployId` (find one with `versions`). **Does not roll back data**
-   — the D1 database is unchanged.
+   explicit `deployId` (find one with `versions`). By default **does not roll
+   back data** — the D1 database is unchanged. Pass `--with-data --yes` to also
+   restore the D1 database to the snapshot captured at that deploy's instant
+   (destructive and irreversible — post-deploy writes since that version are lost).
 4. **versions** — lists all deployment versions with their status, preview URL,
    and timestamp.
 
@@ -179,7 +190,8 @@ capy-app uses a preview-first deploy model:
 node .capy-cli/index.js deploy              # preview-only after first deploy
 node .capy-cli/index.js publish             # promote latest preview to live
 node .capy-cli/index.js publish abc123      # promote specific version to live
-node .capy-cli/index.js rollback abc123     # roll back to a specific version
+node .capy-cli/index.js rollback abc123     # roll back code only
+node .capy-cli/index.js rollback abc123 --with-data --yes  # roll back code + D1 data
 node .capy-cli/index.js versions            # list all versions
 ```
 
@@ -230,6 +242,6 @@ Every command exits non-zero on failure; `--json` emits `{ "success": false, "er
 |------|------|--------|
 | `APP_QUOTA_EXCEEDED` | 402 | Plan limit reached. **Do not retry or rename.** Tell the user to upgrade their plan or delete an unused app to free a slot. |
 | `APP_NAME_TAKEN` | 409 | Name in use. Pick a different name and retry `create`. |
-| `CONFIRMATION_REQUIRED` | — | `delete` called without `--yes`. Re-run with `--yes`. |
+| `CONFIRMATION_REQUIRED` | — | Destructive command called without required confirmation flag. `delete` → add `--yes`. `delete --hard` → add `--hard --yes`. `rollback --with-data` → add `--with-data --yes`. |
 | `MISSING_PROJECT_CONFIG` | — | `.capy-app.json` not found. Run `create` first. |
 | `INVALID_PROJECT_CONFIG` | — | `.capy-app.json` is malformed (e.g. `env` is not an object of string values). Fix the file, then retry. |

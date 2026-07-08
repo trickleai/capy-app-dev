@@ -26,7 +26,7 @@ node .capy-cli/index.js init [--dir <path>]
 node .capy-cli/index.js deploy [--dir <path>] [--json]
 node .capy-cli/index.js status [--json]
 node .capy-cli/index.js list [--all] [--json]
-node .capy-cli/index.js delete [--yes] [--json]
+node .capy-cli/index.js delete [--hard] [--yes] [--json]
 
 # Versioned deploy workflow (preview-first model)
 node .capy-cli/index.js publish [<deployId>] [--json]   # promote preview to live
@@ -51,8 +51,25 @@ capy-app uses a **preview-first** deploy model:
 
 1. **deploy** — uploads the new version. The **first-ever deploy auto-publishes** (live immediately). Subsequent deploys are **preview-only**: accessible at `previewUrl` but the live URL is unchanged.
 2. **publish [deployId]** — promotes a preview version to live. Omit `deployId` to publish the latest preview.
-3. **rollback \<deployId\>** — restores a previously-live version. Pass `--with-data --yes` to also restore the D1 database to the deploy-time snapshot (destructive).
+3. **rollback \<deployId\>** — restores a previously-live version. Pass `--with-data --yes` to also restore the D1 database to the deploy-time snapshot (destructive — post-deploy writes since that version are lost).
 4. **versions** — lists all deployment versions with their status, preview URL, and timestamp.
+
+## Delete lifecycle
+
+```bash
+node .capy-cli/index.js delete --yes               # soft-delete
+node .capy-cli/index.js delete --hard --yes        # hard-delete
+```
+
+**Soft-delete** (`--yes`): removes the deployed worker and routing so the URL stops
+serving. The registry row, app name, and D1 database are preserved. The name is
+locked and cannot be reused.
+
+**Hard-delete** (`--hard --yes`): irreversibly removes ALL resources — CF version
+scripts, KV routing, the D1 database and all its data, deployment history, env
+vars, and the registry row. The app name is released for reuse. **Data is
+permanently unrecoverable.** Omitting `--yes` exits with `CONFIRMATION_REQUIRED`
+without making any network call.
 
 ## Environment Variables
 
