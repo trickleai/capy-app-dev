@@ -6,28 +6,64 @@ This package is intended to be published from `https://github.com/trickleai/capy
 
 In Happycapy, this CLI is meant to be called by the agent as part of the normal app-development flow. Users should describe the app they want; the agent decides when to create, build, deploy, and check status.
 
+## Installation
+
+```bash
+mkdir -p .capy-cli
+curl -fsSL \
+  https://github.com/trickleai/capy-app-dev/releases/latest/download/capy-app-dev.js \
+  -o .capy-cli/index.js
+```
+
+The CLI lives in `.capy-cli/` (not `dist/`) so that `npm run build` — which clears and repopulates `dist/` — does not overwrite it.
+
 ## Commands
 
 ```bash
-capy-app-dev create <app-name>
-capy-app-dev init [--dir <path>]
-capy-app-dev deploy [--dir <path>]
-capy-app-dev status
-capy-app-dev version   # also --version, -v
+# App lifecycle
+node .capy-cli/index.js create <app-name>
+node .capy-cli/index.js init [--dir <path>]
+node .capy-cli/index.js deploy [--dir <path>] [--json]
+node .capy-cli/index.js status [--json]
+node .capy-cli/index.js list [--all] [--json]
+node .capy-cli/index.js delete [--yes] [--json]
+
+# Versioned deploy workflow (preview-first model)
+node .capy-cli/index.js publish [<deployId>] [--json]   # promote preview to live
+node .capy-cli/index.js rollback <deployId> [--with-data] [--yes] [--json]
+node .capy-cli/index.js versions [--json]               # list all deployment versions
+
+# Env vars / secrets
+node .capy-cli/index.js secret list [--json]
+node .capy-cli/index.js secret set <name> <value>
+node .capy-cli/index.js secret unset <name>
+
+# Meta
+node .capy-cli/index.js version   # also --version, -v
+node .capy-cli/index.js help
 ```
 
 Requires Node.js >= 22.
 
+## Versioned deploy workflow
+
+capy-app uses a **preview-first** deploy model:
+
+1. **deploy** — uploads the new version. The **first-ever deploy auto-publishes** (live immediately). Subsequent deploys are **preview-only**: accessible at `previewUrl` but the live URL is unchanged.
+2. **publish [deployId]** — promotes a preview version to live. Omit `deployId` to publish the latest preview.
+3. **rollback \<deployId\>** — restores a previously-live version. Pass `--with-data --yes` to also restore the D1 database to the deploy-time snapshot (destructive).
+4. **versions** — lists all deployment versions with their status, preview URL, and timestamp.
+
 ## Environment Variables
 
-- `CAPY_API_URL` - optional, defaults to the production API (`https://api.happycapy.host`). To test against a non-production environment, set this explicitly to that environment's API URL.
-- `CAPY_SECRET` - preferred sandbox token name for API calls; used to resolve `user_id` automatically
-- `CAPY_AUTH_TOKEN` - legacy fallback token name for API calls outside sandbox environments
-- `MANAGEMENT_API_TOKEN` - accepted legacy fallback token name for API calls
-- `CAPY_USER_ID` - required for `create` only when `CAPY_SECRET` is not set
-- `CAPY_DEFAULT_SCAFFOLD_PATH` - optional local scaffold checkout override for `init`
-- `CAPY_DEFAULT_SCAFFOLD_REPO` - optional public scaffold repo override for `init`
-- `CAPY_DEFAULT_SCAFFOLD_REF` - optional git ref for the scaffold repo clone
+- `CAPY_API_URL` — optional, defaults to `https://api.happycapy.host`. Set for non-production environments.
+- `CAPY_SECRET` — preferred sandbox token; used to resolve `user_id` automatically.
+- `CAPY_AUTH_TOKEN` — legacy fallback token for non-sandbox environments.
+- `MANAGEMENT_API_TOKEN` — accepted legacy fallback token.
+- `CAPY_USER_ID` — required for `create` only when `CAPY_SECRET` is not set.
+- `CAPY_DEFAULT_SCAFFOLD_PATH` — optional local scaffold checkout override for `init`.
+- `CAPY_DEFAULT_SCAFFOLD_REPO` — optional public scaffold repo override for `init`.
+- `CAPY_DEFAULT_SCAFFOLD_REF` — optional git ref for the scaffold repo clone.
 
 ## Local Development
 
@@ -85,5 +121,19 @@ When using the default scaffold, the normal flow is:
 npm install
 npm run db:generate
 npm run build
-capy-app-dev deploy
+node .capy-cli/index.js deploy
 ```
+
+## Env vars / secrets
+
+Env vars are stored in the platform registry (encrypted at rest) and snapshotted into the worker's bindings at deploy time. Persistence uses **accumulate/merge semantics** — a redeploy that omits a previously-set key keeps the stored value. Use `secret unset` to remove a key.
+
+```bash
+node .capy-cli/index.js secret list                  # show stored vars
+node .capy-cli/index.js secret set APP_TITLE "Hello" # upsert one var
+node .capy-cli/index.js secret unset APP_TITLE       # remove one var
+```
+
+`secret set`/`secret unset` also mirror the change into `.capy-app.json` so a later deploy won't overwrite with a stale local value.
+
+> **Note:** `env` is a deprecated alias for `secret`. Use `secret` for all new workflows.
