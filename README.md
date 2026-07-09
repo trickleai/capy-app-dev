@@ -47,11 +47,13 @@ Requires Node.js >= 22.
 
 ## Versioned deploy workflow
 
-capy-app uses a **preview-first** deploy model:
+capy-app uses a **preview-first, two-slot** deploy model. Each app has a fixed
+**live** slot (main URL) and **preview** slot (`previewUrl`). `deploy` writes the
+preview slot; `publish` copies a version into the live slot.
 
-1. **deploy** — uploads the new version. The **first-ever deploy auto-publishes** (live immediately). Subsequent deploys are **preview-only**: accessible at `previewUrl` but the live URL is unchanged.
-2. **publish [deployId]** — promotes a preview version to live. Omit `deployId` to publish the latest preview.
-3. **rollback \<deployId\>** — restores a previously-live version. Pass `--with-data --yes` to also restore the D1 database to the deploy-time snapshot (destructive — post-deploy writes since that version are lost).
+1. **deploy** — uploads the new version to the **preview slot only**, always — **including the first deploy** (`published` is `false`, the live URL is unchanged). Accessible at `previewUrl`; go live with `publish`.
+2. **publish [deployId]** — promotes a version to the live slot. Omit `deployId` to publish the latest preview.
+3. **rollback \<deployId\>** — re-deploys a previous version into the **preview slot** for review (does not change the live URL by itself; `publish` afterward to go live). Pass `--with-data --yes` to also restore the D1 database to the deploy-time snapshot (destructive — post-deploy writes since that version are lost).
 4. **versions** — lists all deployment versions with their status, preview URL, and timestamp.
 
 ## Delete lifecycle
