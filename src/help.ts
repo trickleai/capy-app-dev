@@ -9,7 +9,7 @@ Usage:
   capy-app-dev deploy [--dir <path>] [--json]
   capy-app-dev status [--json]
   capy-app-dev list [--all] [--json]
-  capy-app-dev delete [--yes] [--json]
+  capy-app-dev delete [--hard] [--yes] [--json]
   capy-app-dev secret list [--json]
   capy-app-dev secret set <NAME> <VALUE> [--json]
   capy-app-dev secret unset <NAME> [--json]
@@ -17,7 +17,7 @@ Usage:
   capy-app-dev env set <NAME> <VALUE> [--json]  [deprecated, use secret]
   capy-app-dev env unset <NAME> [--json]  [deprecated, use secret]
   capy-app-dev publish [deployId] [--json]
-  capy-app-dev rollback <deployId> [--json]
+  capy-app-dev rollback <deployId> [--with-data] [--yes] [--json]
   capy-app-dev versions [--json]
   capy-app-dev version
   capy-app-dev help

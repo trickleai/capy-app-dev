@@ -21,14 +21,14 @@ export async function runRollback(args: string[], json: boolean): Promise<void> 
   }
 
   if (positional.length === 0) {
-    throw new CliError("Usage: capy-app-dev rollback <deployId>", {
+    throw new CliError("Usage: capy-app-dev rollback <deployId> [--with-data] [--yes] [--json]", {
       code: "INVALID_USAGE",
       exitCode: 2,
     });
   }
 
   if (positional.length > 1) {
-    throw new CliError("Usage: capy-app-dev rollback <deployId>", {
+    throw new CliError("Usage: capy-app-dev rollback <deployId> [--with-data] [--yes] [--json]", {
       code: "INVALID_USAGE",
       exitCode: 2,
     });
