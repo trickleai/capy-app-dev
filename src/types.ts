@@ -203,3 +203,44 @@ export interface ScaffoldSource {
  * (`{ ok: false }`) — previously both collapsed to `null`.
  */
 export type JsonParseResult = { ok: true; value: unknown } | { ok: false };
+
+/** One entry in a project-code manifest sent to the sync API. */
+export type CodeManifestEntry =
+  | {
+      kind: "file";
+      path: string;
+      contentHash: string;
+      sizeBytes: number;
+      contentType: string;
+    }
+  | { kind: "folder"; path: string };
+
+/** `POST /code/sync` (plan) response. */
+export interface CodeSyncPlanResponse {
+  missing: string[];
+  ignored: number;
+}
+
+/** A snapshot summary in commit / list responses. */
+export interface CodeSnapshotInfo {
+  id: string;
+  label: string;
+  message: string | null;
+  fileCount: number;
+  sizeBytes: number;
+  createdAt: string;
+}
+
+/** `POST /code/sync/commit` response. */
+export interface CodeSyncCommitResponse {
+  success: true;
+  created: number;
+  updated: number;
+  deleted: number;
+  snapshot: CodeSnapshotInfo;
+}
+
+/** `GET /code/ignore` response. */
+export interface CodeIgnoreResponse {
+  patterns: string[];
+}

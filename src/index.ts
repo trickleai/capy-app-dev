@@ -10,6 +10,7 @@ import { runInit } from "./commands/init.ts";
 import { runList } from "./commands/list.ts";
 import { runPublish } from "./commands/publish.ts";
 import { runRollback } from "./commands/rollback.ts";
+import { runSave } from "./commands/save.ts";
 import { runSecret } from "./commands/secret.ts";
 import { runStatus } from "./commands/status.ts";
 import { runVersions } from "./commands/versions.ts";
@@ -33,6 +34,7 @@ export { runInit } from "./commands/init.ts";
 export { runList } from "./commands/list.ts";
 export { runPublish } from "./commands/publish.ts";
 export { runRollback } from "./commands/rollback.ts";
+export { runSave } from "./commands/save.ts";
 export { runSecret } from "./commands/secret.ts";
 export { runStatus } from "./commands/status.ts";
 export { runVersions } from "./commands/versions.ts";
@@ -116,6 +118,9 @@ async function main(): Promise<void> {
         return;
       case "versions":
         await runVersions(rest, json);
+        return;
+      case "save":
+        await runSave(rest, json);
         return;
       default:
         throw new CliError(`Unknown command: ${command}`, { code: "INVALID_COMMAND", exitCode: 2 });

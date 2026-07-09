@@ -246,10 +246,32 @@ Notes:
   supersedes the rolled-back version. Roll back to stop the bleeding, fix forward,
   then deploy again.
 
+## Saving project source (`save`)
+
+`save` backs up the **entire project source tree** to the backend, independent
+of deploy. It is content-addressed and incremental: unchanged files are not
+re-uploaded, and each save records a versioned snapshot.
+
+```
+node .capy-cli/index.js save                       # save the whole workspace (cwd)
+node .capy-cli/index.js save -m "before refactor"  # with a commit message
+node .capy-cli/index.js save --dir ./app --json     # a specific dir, JSON output
+```
+
+- Walks the workspace and **skips ignored paths** (dependency/install dirs like
+  `node_modules`, VCS like `.git`, caches, OS junk — build outputs such as
+  `dist`/`build` are NOT ignored). The ignore list is fetched from the server
+  (`GET .../code/ignore`) so it stays in sync; a built-in fallback is used if
+  that call fails.
+- Flow: build a manifest → ask the server which blobs are missing → upload only
+  those → commit (reconciles the stored tree to match the workspace + records a
+  snapshot with the optional message).
+- `save` does **not** deploy — it only stores source. Deploy stays a separate step.
+
 ## Machine-readable output
 
 Append `--json` to any command (`create`, `init`, `deploy`, `status`, `list`,
-`delete`, `publish`, `rollback`, `versions`, `secret list/set/unset`) for structured output.
+`delete`, `publish`, `rollback`, `versions`, `save`, `secret list/set/unset`) for structured output.
 
 ## Notes
 

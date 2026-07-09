@@ -206,3 +206,55 @@ export async function apiRequest<T>(
 
   return parsed.value as T;
 }
+
+/**
+ * Upload a content-addressed blob (raw bytes body, not JSON) to an explicit
+ * pathname. Used by the project-code `save` flow to stream file content the
+ * server is missing. Returns the parsed `{ contentHash, sizeBytes, deduped }`.
+ */
+export async function putBlobAt(
+  api: { baseUrl: URL; authToken: string },
+  pathname: string,
+  bytes: Uint8Array,
+  contentType: string,
+): Promise<{ contentHash: string; sizeBytes: number; deduped: boolean }> {
+  const url = new URL(pathname, api.baseUrl);
+  const ct = contentType || "application/octet-stream";
+  const response = await fetchWithTimeout(
+    url,
+    {
+      method: "PUT",
+      headers: new Headers({
+        Authorization: `Bearer ${api.authToken}`,
+        Accept: "application/json",
+        "content-type": ct,
+      }),
+      // Wrap in a Blob: a Uint8Array isn't a `BodyInit` under this lib config,
+      // and a Buffer's ArrayBufferLike backing isn't a `BlobPart` — copy into a
+      // plain ArrayBuffer-backed view.
+      body: new Blob([new Uint8Array(bytes)], { type: ct }),
+    },
+    API_REQUEST_TIMEOUT_MS,
+  );
+
+  const rawText = await response.text();
+  const parsed = parseJson(rawText);
+  const payload = parsed.ok ? parsed.value : undefined;
+  if (!response.ok) {
+    const code =
+      isRecord(payload) && isRecord(payload.error) && typeof payload.error.code === "string"
+        ? payload.error.code
+        : `HTTP_${response.status}`;
+    throw new ApiError(response.status, code, readApiErrorMessage(payload, response.status));
+  }
+  if (!isRecord(payload) || typeof payload.contentHash !== "string") {
+    throw new CliError(`Blob upload returned an invalid response for ${pathname}`, {
+      code: "INVALID_API_RESPONSE",
+    });
+  }
+  return {
+    contentHash: payload.contentHash,
+    sizeBytes: typeof payload.sizeBytes === "number" ? payload.sizeBytes : bytes.length,
+    deduped: payload.deduped === true,
+  };
+}

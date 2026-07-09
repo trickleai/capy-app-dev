@@ -19,6 +19,7 @@ Usage:
   capy-app-dev publish [deployId] [--json]
   capy-app-dev rollback <deployId> [--with-data] [--yes] [--json]
   capy-app-dev versions [--json]
+  capy-app-dev save [--dir <path>] [-m <message>] [--json]
   capy-app-dev version
   capy-app-dev help
 

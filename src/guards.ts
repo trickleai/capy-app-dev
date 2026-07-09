@@ -2,6 +2,10 @@ import type {
   AppDatabaseInfo,
   AppStatusResponse,
   AppSummary,
+  CodeIgnoreResponse,
+  CodeSnapshotInfo,
+  CodeSyncCommitResponse,
+  CodeSyncPlanResponse,
   CreateAppResponse,
   DeleteResponse,
   DeployManifest,
@@ -282,4 +286,44 @@ export function isAppStatusResponse(value: unknown): value is AppStatusResponse 
   }
 
   return true;
+}
+
+function isCodeSnapshotInfo(value: unknown): value is CodeSnapshotInfo {
+  return (
+    isRecord(value) &&
+    typeof value.id === "string" &&
+    typeof value.label === "string" &&
+    (value.message === null || typeof value.message === "string") &&
+    typeof value.fileCount === "number" &&
+    typeof value.sizeBytes === "number" &&
+    typeof value.createdAt === "string"
+  );
+}
+
+export function isCodeSyncPlanResponse(value: unknown): value is CodeSyncPlanResponse {
+  return (
+    isRecord(value) &&
+    Array.isArray(value.missing) &&
+    value.missing.every((h) => typeof h === "string") &&
+    typeof value.ignored === "number"
+  );
+}
+
+export function isCodeSyncCommitResponse(value: unknown): value is CodeSyncCommitResponse {
+  return (
+    isRecord(value) &&
+    value.success === true &&
+    typeof value.created === "number" &&
+    typeof value.updated === "number" &&
+    typeof value.deleted === "number" &&
+    isCodeSnapshotInfo(value.snapshot)
+  );
+}
+
+export function isCodeIgnoreResponse(value: unknown): value is CodeIgnoreResponse {
+  return (
+    isRecord(value) &&
+    Array.isArray(value.patterns) &&
+    value.patterns.every((p) => typeof p === "string")
+  );
 }
