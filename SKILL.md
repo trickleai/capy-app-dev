@@ -32,8 +32,9 @@ When the user explicitly asks for a database or persistence, treat D1-backed per
 4. If the user requires a database, implement the app against Cloudflare D1 via `c.env.DB`, define the schema with Drizzle, and generate migrations.
 5. Generate or choose a unique app name and create the remote app record before deploy.
 6. Build the project, then deploy the build output through the platform API. **Always commit and git-tag each deploy** (see Command Workflow step 5) so every deployment is a recoverable version — do this automatically, without waiting for the user to ask.
-7. Verify the deployment result and app status show database metadata when D1 was required.
-8. Return the preview URL and deployment status to the user.
+7. **`deploy` is preview-only — it never goes live on its own, not even the first time.** To make a version live you must call `publish` (see Command Workflow step 6). For a normal "build and ship it" request, deploy then publish. If the user only wants to preview/review first, deploy and hand back the preview URL without publishing.
+8. Verify the deployment result and app status show database metadata when D1 was required.
+9. Return the preview URL (and, once published, the live URL) and deployment status to the user.
 
 ## Command Workflow
 
@@ -104,7 +105,23 @@ If the user asked for a database, do not skip `npm run db:generate` after schema
    local code (and `.capy-app.json`, including its `env`) aligned with each
    server-side version, so a later `rollback` can be mirrored locally.
 
-6. Check the current remote status:
+   **`deploy` is preview-only.** It uploads to the preview slot and returns a
+   `previewUrl`; `published` is `false`. The live URL is NOT updated — this is
+   true for **every** deploy, including the first one. Go live with `publish`
+   (next step).
+
+6. Publish to make a version live. `deploy` only produces a preview; the live
+   URL changes only when you publish:
+
+   ```bash
+   node .capy-cli/index.js publish            # publish the latest preview
+   node .capy-cli/index.js publish <deployId> # publish a specific version
+   ```
+
+   For a normal "build and ship" request, run `publish` right after `deploy`.
+   Skip it only when the user explicitly wants to preview/review before going live.
+
+7. Check the current remote status:
 
 ```bash
 node .capy-cli/index.js status
@@ -112,7 +129,7 @@ node .capy-cli/index.js status
 
 When D1 is required, prefer `node .capy-cli/index.js deploy --json` and `node .capy-cli/index.js status --json` so the agent can verify that `database.id` and `database.name` were returned.
 
-7. List the account's apps:
+8. List the account's apps:
 
 ```bash
 node .capy-cli/index.js list          # active apps only
@@ -121,7 +138,7 @@ node .capy-cli/index.js list --all    # include suspended/deleted rows too
 
 Ownership is scoped to the caller's account.
 
-8. Delete the app (destructive — requires explicit confirmation):
+9. Delete the app (destructive — requires explicit confirmation):
 
 ```bash
 node .capy-cli/index.js delete --yes               # soft-delete (default)
@@ -170,28 +187,35 @@ node .capy-cli/index.js secret unset APP_TITLE       # remove one var
 
 ## Versioned deploy workflow
 
-capy-app uses a preview-first deploy model:
+capy-app uses a preview-first, two-slot deploy model. Every app has two fixed
+worker slots: a **live** slot (served at the app's main URL) and a **preview**
+slot (served at `previewUrl`). `deploy` only ever writes the preview slot;
+`publish` copies a version into the live slot.
 
-1. **deploy** — uploads the new version. The **first-ever deploy auto-publishes**
-   (live immediately; no need to call `publish`). Subsequent deploys are
-   **preview-only**: accessible at `previewUrl` but the live URL is unchanged.
-2. **publish [deployId]** — promotes a preview version to live. Omit `deployId`
+1. **deploy** — uploads the new version to the **preview slot only**. This is
+   always preview-only — **including the first-ever deploy** (`published` is
+   `false`, the live URL is not created/changed). Accessible at `previewUrl`.
+   To go live you must `publish`.
+2. **publish [deployId]** — promotes a version to the live slot. Omit `deployId`
    to publish the latest preview; pass an explicit `deployId` to publish a
    specific version.
-3. **rollback \<deployId\>** — restores a previously-live version. Requires an
-   explicit `deployId` (find one with `versions`). By default **does not roll
-   back data** — the D1 database is unchanged. Pass `--with-data --yes` to also
-   restore the D1 database to the snapshot captured at that deploy's instant
-   (destructive and irreversible — post-deploy writes since that version are lost).
+3. **rollback \<deployId\>** — re-deploys a previous version into the **preview
+   slot** for review (it does NOT change the live URL by itself — publish
+   afterward to make it live). Requires an explicit `deployId` (find one with
+   `versions`). By default **does not roll back data** — the D1 database is
+   unchanged. Pass `--with-data --yes` to also restore the D1 database to the
+   snapshot captured at that deploy's instant (destructive and irreversible —
+   post-deploy writes since that version are lost).
 4. **versions** — lists all deployment versions with their status, preview URL,
    and timestamp.
 
 ```bash
-node .capy-cli/index.js deploy              # preview-only after first deploy
+node .capy-cli/index.js deploy              # preview-only (always, incl. first deploy)
 node .capy-cli/index.js publish             # promote latest preview to live
 node .capy-cli/index.js publish abc123      # promote specific version to live
-node .capy-cli/index.js rollback abc123     # roll back code only
-node .capy-cli/index.js rollback abc123 --with-data --yes  # roll back code + D1 data
+node .capy-cli/index.js rollback abc123     # re-deploy abc123 into preview slot
+node .capy-cli/index.js rollback abc123 --with-data --yes  # + restore D1 data
+node .capy-cli/index.js publish             # then publish to make the rolled-back version live
 node .capy-cli/index.js versions            # list all versions
 ```
 
@@ -199,12 +223,14 @@ node .capy-cli/index.js versions            # list all versions
 
 Because you commit + `git tag "v-<deployId>"` on every deploy (step 5 of the
 Command Workflow), each server-side version has a matching local tag. `rollback`
-only re-points the live URL server-side and does **not** touch sandbox code, so
-after rolling back, check out the tag to bring the local project back in step:
+re-deploys the version into the **preview slot** server-side and does **not**
+touch sandbox code, so after rolling back, check out the tag to bring the local
+project back in step (then `publish` when you're ready to make it live):
 
 ```bash
 node .capy-cli/index.js rollback <deployId> --json
 git checkout "v-<deployId>"
+node .capy-cli/index.js publish              # make the rolled-back version live
 ```
 
 Notes:
