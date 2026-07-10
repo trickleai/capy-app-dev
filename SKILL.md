@@ -31,7 +31,7 @@ When the user explicitly asks for a database or persistence, treat D1-backed per
 3. If the task already has a repo or template requirement, clone/copy that source instead.
 4. If the user requires a database, implement the app against Cloudflare D1 via `c.env.DB`, define the schema with Drizzle, and generate migrations.
 5. Generate or choose a unique app name and create the remote app record before deploy.
-6. Build the project, then deploy the build output through the platform API. **Always commit and git-tag each deploy** (see Command Workflow step 5) so every deployment is a recoverable version — do this automatically, without waiting for the user to ask.
+6. Build the project, then deploy the build output through the platform API. **`deploy` now requires a `-m "<message>"`** describing the change (see "Writing good messages" below); it is mandatory and enforced locally. **`deploy` also auto-saves the project source** as a versioned snapshot before uploading the build, so every deployed version has a matching, recoverable source snapshot — you do not need a separate `save` before `deploy`. **Always also commit and git-tag each deploy** (see Command Workflow step 5) — the git tag is a session-local mirror that complements the persistent server-side snapshot (see "Two version records" below). Do this automatically, without waiting for the user to ask.
 7. **`deploy` is preview-only — it never goes live on its own, not even the first time.** To make a version live you must call `publish` (see Command Workflow step 6). For a normal "build and ship it" request, deploy then publish. If the user only wants to preview/review first, deploy and hand back the preview URL without publishing.
 8. Verify the deployment result and app status show database metadata when D1 was required.
 9. Return the preview URL (and, once published, the live URL) and deployment status to the user.
@@ -90,11 +90,16 @@ If the user asked for a database, do not skip `npm run db:generate` after schema
    git add -A && git commit -q -m "deploy: <short description>"
    ```
 
-   **b. Deploy:**
+   **b. Deploy** (a `-m` message is **required** — see "Writing good messages"):
    ```bash
-   node .capy-cli/index.js deploy --json
+   node .capy-cli/index.js deploy -m "<what changed and why>" --json
    ```
    (Deploys from `./dist` by default; use `--dir <path>` for another output dir.)
+   `deploy` first auto-saves the project **source** as a snapshot (using the same
+   `-m` message), then uploads the build. The source snapshot is best-effort: if
+   the code API is unavailable it is skipped with a warning and the deploy still
+   proceeds. An empty/whitespace `-m` is rejected locally (`MISSING_MESSAGE`,
+   exit 2) before any network call.
 
    **c. Tag the commit with the returned `deployId`:**
    ```bash
@@ -210,7 +215,7 @@ slot (served at `previewUrl`). `deploy` only ever writes the preview slot;
    and timestamp.
 
 ```bash
-node .capy-cli/index.js deploy              # preview-only (always, incl. first deploy)
+node .capy-cli/index.js deploy -m "add checkout page"      # preview-only (always, incl. first deploy)
 node .capy-cli/index.js publish             # promote latest preview to live
 node .capy-cli/index.js publish abc123      # promote specific version to live
 node .capy-cli/index.js rollback abc123     # re-deploy abc123 into preview slot
@@ -219,7 +224,17 @@ node .capy-cli/index.js publish             # then publish to make the rolled-ba
 node .capy-cli/index.js versions            # list all versions
 ```
 
-### Git tags mirror rollback locally
+### Two version records: server snapshot + local git tag (they coexist)
+
+There are two complementary records of each version — keep both, they serve
+different purposes and do **not** replace each other:
+
+| | Server-side **source snapshot** | Local **git tag** (`v-<deployId>`) |
+|---|---|---|
+| Created by | `deploy` auto-saves it (and `save`) | you `git commit` + `git tag` on each deploy |
+| Lifetime | **persistent** — the durable source of truth, survives across sandboxes | **session-local** — lives only in this sandbox's git repo |
+| Purpose | authoritative "what source produced this version"; queryable/restorable server-side | quick local convenience to check the working tree back out |
+| Findable by | its `-m` message (why detailed messages matter) | the deployId in the tag name |
 
 Because you commit + `git tag "v-<deployId>"` on every deploy (step 5 of the
 Command Workflow), each server-side version has a matching local tag. `rollback`
@@ -250,12 +265,17 @@ Notes:
 
 `save` backs up the **entire project source tree** to the backend, independent
 of deploy. It is content-addressed and incremental: unchanged files are not
-re-uploaded, and each save records a versioned snapshot.
+re-uploaded, and each save records a versioned snapshot. **`deploy` runs this
+same save automatically** (see Command Workflow step 5), so an explicit `save`
+is only needed to snapshot a checkpoint that you are **not** deploying.
 
-```
-node .capy-cli/index.js save                       # save the whole workspace (cwd)
-node .capy-cli/index.js save -m "before refactor"  # with a commit message
-node .capy-cli/index.js save --dir ./app --json     # a specific dir, JSON output
+`save` **requires a `-m "<message>"`** (like `deploy`). An empty/whitespace
+message is rejected locally (`MISSING_MESSAGE`, exit 2) — the message is the
+only human-readable handle for finding and rolling back to a version later.
+
+```bash
+node .capy-cli/index.js save -m "extract auth into its own module"   # snapshot the workspace (cwd)
+node .capy-cli/index.js save -m "wip: checkout page markup" --dir ./app --json  # a specific dir, JSON
 ```
 
 - Walks the workspace and **skips ignored paths** (dependency/install dirs like
@@ -265,8 +285,29 @@ node .capy-cli/index.js save --dir ./app --json     # a specific dir, JSON outpu
   that call fails.
 - Flow: build a manifest → ask the server which blobs are missing → upload only
   those → commit (reconciles the stored tree to match the workspace + records a
-  snapshot with the optional message).
+  snapshot with the message).
 - `save` does **not** deploy — it only stores source. Deploy stays a separate step.
+
+### Writing good messages
+
+The `-m` message is the **only** thing an agent (or human) has later to tell
+versions apart and decide which one to roll back to — there is no diff viewer in
+the recovery path, just the list of messages. Write it for a reader who has to
+choose a version months from now:
+
+- **State what changed and why**, specifically. Name the feature/area touched.
+- **One concrete change per message.** If you did several unrelated things, that
+  is a sign to `save`/`deploy` in smaller steps.
+- **Never** use vague placeholders like `update`, `wip`, `fix`, `changes`,
+  `stuff`, `.`, or the empty string — they make every version look identical and
+  the version list useless.
+
+| ❌ Avoid | ✅ Prefer |
+|---|---|
+| `update` | `add dark-mode toggle to settings page` |
+| `fix` | `fix cart total ignoring discount codes` |
+| `wip` | `wip: checkout form validation (email + card)` |
+| `changes to db` | `add orders table + migration 0004` |
 
 ## Machine-readable output
 
@@ -291,5 +332,6 @@ Every command exits non-zero on failure; `--json` emits `{ "success": false, "er
 | `APP_QUOTA_EXCEEDED` | 402 | Plan limit reached. **Do not retry or rename.** Tell the user to upgrade their plan or delete an unused app to free a slot. |
 | `APP_NAME_TAKEN` | 409 | Name in use. Pick a different name and retry `create`. |
 | `CONFIRMATION_REQUIRED` | — | Destructive command called without required confirmation flag. `delete` → add `--yes`. `delete --hard` → add `--hard --yes`. `rollback --with-data` → add `--with-data --yes`. |
+| `MISSING_MESSAGE` | — | `save`/`deploy` called without a non-empty `-m "<message>"`. Add a specific message describing the change (see "Writing good messages"). No network call is made. |
 | `MISSING_PROJECT_CONFIG` | — | `.capy-app.json` not found. Run `create` first. |
 | `INVALID_PROJECT_CONFIG` | — | `.capy-app.json` is malformed (e.g. `env` is not an object of string values). Fix the file, then retry. |

@@ -23,7 +23,8 @@ The CLI lives in `.capy-cli/` (not `dist/`) so that `npm run build` — which cl
 # App lifecycle
 node .capy-cli/index.js create <app-name>
 node .capy-cli/index.js init [--dir <path>]
-node .capy-cli/index.js deploy [--dir <path>] [--json]
+node .capy-cli/index.js deploy -m <message> [--dir <path>] [--json]
+node .capy-cli/index.js save -m <message> [--dir <path>] [--json]
 node .capy-cli/index.js status [--json]
 node .capy-cli/index.js list [--all] [--json]
 node .capy-cli/index.js delete [--hard] [--yes] [--json]
@@ -140,8 +141,13 @@ When using the default scaffold, the normal flow is:
 npm install
 npm run db:generate
 npm run build
-node .capy-cli/index.js deploy
+node .capy-cli/index.js deploy -m "describe what changed"
 ```
+
+`deploy` requires a `-m "<message>"` and auto-saves the project source as a
+versioned snapshot before uploading the build (best-effort — skipped with a
+warning if the code API is unavailable). An empty message is rejected locally
+(`MISSING_MESSAGE`, exit 2).
 
 ## Env vars / secrets
 
