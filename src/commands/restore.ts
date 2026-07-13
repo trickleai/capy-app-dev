@@ -122,8 +122,8 @@ export async function runRestore(args: string[], json: boolean): Promise<void> {
   const api = await getApiContext();
   const appPath = `/api/apps/${encodeURIComponent(config.appName)}/code`;
 
-  // 1. Revert the server-side live tree to the snapshot (true revert). A missing
-  //    snapshot surfaces as SNAPSHOT_NOT_FOUND from the backend.
+  // 1. Revert the server-side live tree to the snapshot (true revert). An
+  //    unknown snapshot surfaces as a 404 (NOT_FOUND) from the backend.
   const restoreRes = await apiRequest<unknown>(api, {
     method: "POST",
     pathname: `${appPath}/snapshots/${encodeURIComponent(snapshotId)}/restore`,

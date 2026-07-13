@@ -365,6 +365,6 @@ Every command exits non-zero on failure; `--json` emits `{ "success": false, "er
 | `APP_NAME_TAKEN` | 409 | Name in use. Pick a different name and retry `create`. |
 | `CONFIRMATION_REQUIRED` | — | Destructive command called without required confirmation flag. `delete` → add `--yes`. `delete --hard` → add `--hard --yes`. `rollback --with-data` → add `--with-data --yes`. `restore` → add `--yes` (it overwrites the local workspace). |
 | `MISSING_MESSAGE` | — | `save`/`deploy` called without a non-empty `-m "<message>"`. Add a specific message describing the change (see "Writing good messages"). No network call is made. |
-| `SNAPSHOT_NOT_FOUND` | 404 | `restore` was given a snapshot id that does not exist for this app. Run `snapshots` to list valid ids. |
+| `NOT_FOUND` | 404 | `restore` was given a snapshot id that does not exist for this app. Run `snapshots` to list valid ids. |
 | `MISSING_PROJECT_CONFIG` | — | `.capy-app.json` not found. Run `create` first. |
 | `INVALID_PROJECT_CONFIG` | — | `.capy-app.json` is malformed (e.g. `env` is not an object of string values). Fix the file, then retry. |
