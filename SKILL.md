@@ -288,6 +288,38 @@ node .capy-cli/index.js save -m "wip: checkout page markup" --dir ./app --json  
   snapshot with the message).
 - `save` does **not** deploy — it only stores source. Deploy stays a separate step.
 
+## Browsing and restoring source versions (`snapshots` / `restore`)
+
+Together with `save`/`deploy`'s auto-save, these two commands close the source
+version-control loop: **save → list → restore**.
+
+```bash
+node .capy-cli/index.js snapshots                        # list source snapshots, newest-first
+node .capy-cli/index.js snapshots --json                 # machine-readable
+node .capy-cli/index.js restore <snapshotId> --yes       # revert the workspace to that snapshot
+```
+
+**`snapshots`** lists every recorded source version (id, timestamp, file count,
+and the `-m` message). The `message` is how you decide which version to go back
+to — this is why detailed messages matter.
+
+**`restore <snapshotId>`** is a **true revert of the local workspace** to that
+snapshot: it reverts the server-side source tree to the snapshot, then downloads
+that tree over your working directory — **overwriting changed files and deleting
+files added since the snapshot**. Because it can discard uncommitted work it is
+**destructive and requires `--yes`** (without it: `CONFIRMATION_REQUIRED`, no
+network call). It skips ignored paths (`node_modules`, `.git`, …) and never
+touches `.capy-app.json`, so dependencies and project identity survive.
+
+`restore` does **not** deploy — after it, your local code matches the snapshot;
+run `deploy -m "..."` to ship that version live. A typical recovery flow:
+
+```bash
+node .capy-cli/index.js snapshots                        # find the good version by its message
+node .capy-cli/index.js restore asnap_abc123 --yes       # bring the workspace back to it
+node .capy-cli/index.js deploy -m "revert to pre-refactor checkout"   # ship it
+```
+
 ### Writing good messages
 
 The `-m` message is the **only** thing an agent (or human) has later to tell
@@ -312,7 +344,7 @@ choose a version months from now:
 ## Machine-readable output
 
 Append `--json` to any command (`create`, `init`, `deploy`, `status`, `list`,
-`delete`, `publish`, `rollback`, `versions`, `save`, `secret list/set/unset`) for structured output.
+`delete`, `publish`, `rollback`, `versions`, `save`, `snapshots`, `restore`, `secret list/set/unset`) for structured output.
 
 ## Notes
 
@@ -331,7 +363,8 @@ Every command exits non-zero on failure; `--json` emits `{ "success": false, "er
 |------|------|--------|
 | `APP_QUOTA_EXCEEDED` | 402 | Plan limit reached. **Do not retry or rename.** Tell the user to upgrade their plan or delete an unused app to free a slot. |
 | `APP_NAME_TAKEN` | 409 | Name in use. Pick a different name and retry `create`. |
-| `CONFIRMATION_REQUIRED` | — | Destructive command called without required confirmation flag. `delete` → add `--yes`. `delete --hard` → add `--hard --yes`. `rollback --with-data` → add `--with-data --yes`. |
+| `CONFIRMATION_REQUIRED` | — | Destructive command called without required confirmation flag. `delete` → add `--yes`. `delete --hard` → add `--hard --yes`. `rollback --with-data` → add `--with-data --yes`. `restore` → add `--yes` (it overwrites the local workspace). |
 | `MISSING_MESSAGE` | — | `save`/`deploy` called without a non-empty `-m "<message>"`. Add a specific message describing the change (see "Writing good messages"). No network call is made. |
+| `SNAPSHOT_NOT_FOUND` | 404 | `restore` was given a snapshot id that does not exist for this app. Run `snapshots` to list valid ids. |
 | `MISSING_PROJECT_CONFIG` | — | `.capy-app.json` not found. Run `create` first. |
 | `INVALID_PROJECT_CONFIG` | — | `.capy-app.json` is malformed (e.g. `env` is not an object of string values). Fix the file, then retry. |

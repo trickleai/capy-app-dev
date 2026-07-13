@@ -16,8 +16,10 @@ import {
   runInit,
   runList,
   runPublish,
+  runRestore,
   runRollback,
   runSecret,
+  runSnapshots,
   runStatus,
   runVersions,
 } from "./index.ts";
@@ -1382,5 +1384,238 @@ describe("runVersions", () => {
       return true;
     });
     assert.equal(calls.length, 0);
+  });
+});
+
+describe("runSnapshots", () => {
+  it("GETs /code/snapshots and prints a table", async () => {
+    await writeConfig("demo-app");
+    stubFetch(() =>
+      jsonResponse({
+        snapshots: [
+          {
+            id: "asnap_2",
+            label: "",
+            message: "second change",
+            fileCount: 12,
+            sizeBytes: 3400,
+            createdAt: "2026-07-02T00:00:00Z",
+          },
+          {
+            id: "asnap_1",
+            label: "",
+            message: "first change",
+            fileCount: 10,
+            sizeBytes: 3000,
+            createdAt: "2026-07-01T00:00:00Z",
+          },
+        ],
+      }),
+    );
+
+    const out = await capture(() => runSnapshots([], false));
+
+    assert.equal(calls[0].init?.method, "GET");
+    assert.match(calls[0].url, /\/api\/apps\/demo-app\/code\/snapshots$/);
+    assert.match(out, /SNAPSHOT_ID/);
+    assert.match(out, /asnap_2/);
+    assert.match(out, /second change/);
+  });
+
+  it("prints a hint for an empty list", async () => {
+    await writeConfig("demo-app");
+    stubFetch(() => jsonResponse({ snapshots: [] }));
+
+    const out = await capture(() => runSnapshots([], false));
+    assert.match(out, /No snapshots/);
+  });
+
+  it("emits JSON envelope with --json", async () => {
+    await writeConfig("demo-app");
+    stubFetch(() =>
+      jsonResponse({
+        snapshots: [
+          {
+            id: "asnap_1",
+            label: "",
+            message: "only change",
+            fileCount: 5,
+            sizeBytes: 100,
+            createdAt: "2026-07-01T00:00:00Z",
+          },
+        ],
+      }),
+    );
+
+    const out = await capture(() => runSnapshots([], true));
+    const parsed = JSON.parse(out);
+    assert.equal(parsed.success, true);
+    assert.equal(parsed.appName, "demo-app");
+    assert.equal(parsed.snapshots.length, 1);
+    assert.equal(parsed.snapshots[0].id, "asnap_1");
+  });
+
+  it("rejects extra positional args with INVALID_USAGE (exit 2)", async () => {
+    await writeConfig("demo-app");
+    stubFetch(() => jsonResponse({}));
+
+    await assert.rejects(runSnapshots(["extra"], false), (err: unknown) => {
+      assert.ok(err instanceof CliError);
+      assert.equal(err.code, "INVALID_USAGE");
+      assert.equal(err.exitCode, 2);
+      return true;
+    });
+    assert.equal(calls.length, 0);
+  });
+});
+
+describe("runRestore", () => {
+  // Serve the restore leg: POST restore, GET ignore, recursive file listing, and
+  // file content bytes. The snapshot tree here is: /keep.txt ("A1") + /sub/c.txt ("C1").
+  function restoreStub(): (call: FetchCall) => Response {
+    return (call) => {
+      const { url, init } = call;
+      if (/\/code\/snapshots\/[^/]+\/restore$/.test(url) && init?.method === "POST") {
+        return jsonResponse({ ok: true, restored: 2, deleted: 1 });
+      }
+      if (/\/code\/ignore$/.test(url)) {
+        return jsonResponse({ patterns: [] });
+      }
+      if (/\/code\/files\?dir=/.test(url)) {
+        const dir = decodeURIComponent(url.split("dir=")[1] ?? "/");
+        if (dir === "/") {
+          return jsonResponse({
+            dir: "/",
+            entries: [
+              {
+                id: "f_keep",
+                kind: "file",
+                name: "keep.txt",
+                path: "/keep.txt",
+                dir: "/",
+                contentHash: "h1",
+                sizeBytes: 2,
+                contentType: "text/plain",
+                updatedAt: "t",
+              },
+              {
+                id: "d_sub",
+                kind: "folder",
+                name: "sub",
+                path: "/sub",
+                dir: "/",
+                contentHash: null,
+                sizeBytes: null,
+                contentType: null,
+                updatedAt: "t",
+              },
+            ],
+          });
+        }
+        return jsonResponse({
+          dir: "/sub",
+          entries: [
+            {
+              id: "f_c",
+              kind: "file",
+              name: "c.txt",
+              path: "/sub/c.txt",
+              dir: "/sub",
+              contentHash: "h2",
+              sizeBytes: 2,
+              contentType: "text/plain",
+              updatedAt: "t",
+            },
+          ],
+        });
+      }
+      if (/\/code\/files\/f_keep\/content$/.test(url)) {
+        return new Response("A1", { status: 200 });
+      }
+      if (/\/code\/files\/f_c\/content$/.test(url)) {
+        return new Response("C1", { status: 200 });
+      }
+      return jsonResponse({}, 404);
+    };
+  }
+
+  it("requires --yes: CONFIRMATION_REQUIRED (exit 2) with no network call", async () => {
+    await writeConfig("demo-app");
+    stubFetch(restoreStub());
+
+    await assert.rejects(runRestore(["asnap_1"], false), (err: unknown) => {
+      assert.ok(err instanceof CliError);
+      assert.equal(err.code, "CONFIRMATION_REQUIRED");
+      assert.equal(err.exitCode, 2);
+      return true;
+    });
+    assert.equal(calls.length, 0, "must not hit the API without --yes");
+  });
+
+  it("rejects a missing snapshotId with INVALID_USAGE (exit 2)", async () => {
+    await writeConfig("demo-app");
+    stubFetch(restoreStub());
+
+    await assert.rejects(runRestore(["--yes"], false), (err: unknown) => {
+      assert.ok(err instanceof CliError);
+      assert.equal(err.code, "INVALID_USAGE");
+      assert.equal(err.exitCode, 2);
+      return true;
+    });
+    assert.equal(calls.length, 0);
+  });
+
+  it("restores: writes snapshot files locally and deletes local files not in the snapshot", async () => {
+    await writeConfig("demo-app");
+    // Local workspace before restore: keep.txt (stale), extra.txt (added since snapshot).
+    await writeFile(path.join(workDir, "keep.txt"), "STALE");
+    await writeFile(path.join(workDir, "extra.txt"), "ADDED");
+    stubFetch(restoreStub());
+
+    const out = await capture(() => runRestore(["asnap_1", "--yes"], false));
+
+    // Server restore was invoked.
+    assert.ok(calls.some((c) => /\/code\/snapshots\/asnap_1\/restore$/.test(c.url)));
+    // keep.txt overwritten to snapshot content; sub/c.txt created.
+    assert.equal(await readFile(path.join(workDir, "keep.txt"), "utf8"), "A1");
+    assert.equal(await readFile(path.join(workDir, "sub", "c.txt"), "utf8"), "C1");
+    // extra.txt deleted (absent from snapshot).
+    await assert.rejects(readFile(path.join(workDir, "extra.txt"), "utf8"));
+    assert.match(out, /Restored demo-app to snapshot asnap_1/);
+  });
+
+  it("propagates SNAPSHOT_NOT_FOUND (404) for an unknown snapshot from the backend", async () => {
+    await writeConfig("demo-app");
+    // The restore endpoint reports an unknown snapshot id as SNAPSHOT_NOT_FOUND
+    // (404) — the same code deploy-app uses for its snapshotId check.
+    stubFetch((call) => {
+      if (/\/restore$/.test(call.url)) {
+        return jsonResponse(
+          { error: { code: "SNAPSHOT_NOT_FOUND", message: "Snapshot not found." } },
+          404,
+        );
+      }
+      return jsonResponse({}, 404);
+    });
+
+    await assert.rejects(runRestore(["asnap_missing", "--yes"], false), (err: unknown) => {
+      assert.ok(err instanceof ApiError);
+      assert.equal(err.status, 404);
+      assert.equal(err.code, "SNAPSHOT_NOT_FOUND");
+      return true;
+    });
+  });
+
+  it("emits JSON envelope with --json", async () => {
+    await writeConfig("demo-app");
+    await writeFile(path.join(workDir, "extra.txt"), "ADDED");
+    stubFetch(restoreStub());
+
+    const out = await capture(() => runRestore(["asnap_1", "--yes"], true));
+    const parsed = JSON.parse(out);
+    assert.equal(parsed.success, true);
+    assert.equal(parsed.snapshotId, "asnap_1");
+    assert.equal(parsed.written, 2);
+    assert.equal(parsed.deletedLocally, 1);
   });
 });

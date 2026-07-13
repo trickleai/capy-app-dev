@@ -2,8 +2,11 @@ import type {
   AppDatabaseInfo,
   AppStatusResponse,
   AppSummary,
+  CodeFilesResponse,
   CodeIgnoreResponse,
+  CodeRestoreResponse,
   CodeSnapshotInfo,
+  CodeSnapshotListResponse,
   CodeSyncCommitResponse,
   CodeSyncPlanResponse,
   CreateAppResponse,
@@ -325,5 +328,38 @@ export function isCodeIgnoreResponse(value: unknown): value is CodeIgnoreRespons
     isRecord(value) &&
     Array.isArray(value.patterns) &&
     value.patterns.every((p) => typeof p === "string")
+  );
+}
+
+export function isCodeSnapshotListResponse(value: unknown): value is CodeSnapshotListResponse {
+  return (
+    isRecord(value) &&
+    Array.isArray(value.snapshots) &&
+    value.snapshots.every((s) => isCodeSnapshotInfo(s))
+  );
+}
+
+export function isCodeRestoreResponse(value: unknown): value is CodeRestoreResponse {
+  return (
+    isRecord(value) &&
+    typeof value.ok === "boolean" &&
+    typeof value.restored === "number" &&
+    typeof value.deleted === "number"
+  );
+}
+
+export function isCodeFilesResponse(value: unknown): value is CodeFilesResponse {
+  return (
+    isRecord(value) &&
+    typeof value.dir === "string" &&
+    Array.isArray(value.entries) &&
+    value.entries.every(
+      (e) =>
+        isRecord(e) &&
+        typeof e.id === "string" &&
+        (e.kind === "file" || e.kind === "folder") &&
+        typeof e.path === "string" &&
+        (e.contentHash === null || typeof e.contentHash === "string"),
+    )
   );
 }

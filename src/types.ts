@@ -244,3 +244,34 @@ export interface CodeSyncCommitResponse {
 export interface CodeIgnoreResponse {
   patterns: string[];
 }
+
+/** `GET /code/snapshots` response — snapshots newest-first. */
+export interface CodeSnapshotListResponse {
+  snapshots: CodeSnapshotInfo[];
+}
+
+/** `POST /code/snapshots/:id/restore` response — a true revert of the live tree. */
+export interface CodeRestoreResponse {
+  ok: boolean;
+  restored: number;
+  deleted: number;
+}
+
+/** One entry from `GET /code/files?dir=` (a live-tree file or folder). */
+export interface CodeFileEntry {
+  id: string;
+  kind: "file" | "folder";
+  name: string;
+  path: string;
+  dir: string;
+  contentHash: string | null;
+  sizeBytes: number | null;
+  contentType: string | null;
+  updatedAt: string;
+}
+
+/** `GET /code/files?dir=` response — entries directly under `dir`. */
+export interface CodeFilesResponse {
+  dir: string;
+  entries: CodeFileEntry[];
+}
