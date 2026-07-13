@@ -9,9 +9,11 @@ import { runEnv } from "./commands/env.ts";
 import { runInit } from "./commands/init.ts";
 import { runList } from "./commands/list.ts";
 import { runPublish } from "./commands/publish.ts";
+import { runRestore } from "./commands/restore.ts";
 import { runRollback } from "./commands/rollback.ts";
 import { runSave } from "./commands/save.ts";
 import { runSecret } from "./commands/secret.ts";
+import { runSnapshots } from "./commands/snapshots.ts";
 import { runStatus } from "./commands/status.ts";
 import { runVersions } from "./commands/versions.ts";
 import { readPackageVersion } from "./env.ts";
@@ -33,9 +35,11 @@ export { runEnv } from "./commands/env.ts";
 export { runInit } from "./commands/init.ts";
 export { runList } from "./commands/list.ts";
 export { runPublish } from "./commands/publish.ts";
+export { runRestore } from "./commands/restore.ts";
 export { runRollback } from "./commands/rollback.ts";
 export { runSave } from "./commands/save.ts";
 export { runSecret } from "./commands/secret.ts";
+export { runSnapshots } from "./commands/snapshots.ts";
 export { runStatus } from "./commands/status.ts";
 export { runVersions } from "./commands/versions.ts";
 export { getFirstConfiguredEnvValue, readPackageVersion } from "./env.ts";
@@ -121,6 +125,12 @@ async function main(): Promise<void> {
         return;
       case "save":
         await runSave(rest, json);
+        return;
+      case "snapshots":
+        await runSnapshots(rest, json);
+        return;
+      case "restore":
+        await runRestore(rest, json);
         return;
       default:
         throw new CliError(`Unknown command: ${command}`, { code: "INVALID_COMMAND", exitCode: 2 });

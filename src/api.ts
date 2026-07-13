@@ -261,3 +261,35 @@ export async function putBlobAt(
     deduped: payload.deduped === true,
   };
 }
+
+/**
+ * Download raw bytes from a GET endpoint that streams a file body (not JSON) —
+ * used by `restore` to pull a snapshot's file content back into the workspace.
+ * Returns the response bytes as a Uint8Array; throws a coded error on non-2xx.
+ */
+export async function getBytesAt(
+  api: { baseUrl: URL; authToken: string },
+  pathname: string,
+  timeoutMs: number = API_REQUEST_TIMEOUT_MS,
+): Promise<Uint8Array> {
+  const url = new URL(pathname, api.baseUrl);
+  const response = await fetchWithTimeout(
+    url,
+    {
+      method: "GET",
+      headers: new Headers({ Authorization: `Bearer ${api.authToken}` }),
+    },
+    timeoutMs,
+  );
+  if (!response.ok) {
+    const rawText = await response.text();
+    const parsed = parseJson(rawText);
+    const payload = parsed.ok ? parsed.value : undefined;
+    const code =
+      isRecord(payload) && isRecord(payload.error) && typeof payload.error.code === "string"
+        ? payload.error.code
+        : `HTTP_${response.status}`;
+    throw new ApiError(response.status, code, readApiErrorMessage(payload, response.status));
+  }
+  return new Uint8Array(await response.arrayBuffer());
+}

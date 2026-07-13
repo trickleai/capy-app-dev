@@ -20,6 +20,8 @@ Usage:
   capy-app-dev rollback <deployId> [--with-data] [--yes] [--json]
   capy-app-dev versions [--json]
   capy-app-dev save -m <message> [--dir <path>] [--json]
+  capy-app-dev snapshots [--json]
+  capy-app-dev restore <snapshotId> --yes [--dir <path>] [--json]
   capy-app-dev version
   capy-app-dev help
 

@@ -34,6 +34,10 @@ node .capy-cli/index.js publish [<deployId>] [--json]   # promote preview to liv
 node .capy-cli/index.js rollback <deployId> [--with-data] [--yes] [--json]
 node .capy-cli/index.js versions [--json]               # list all deployment versions
 
+# Source version control
+node .capy-cli/index.js snapshots [--json]                      # list source snapshots
+node .capy-cli/index.js restore <snapshotId> --yes [--json]     # revert workspace to a snapshot
+
 # Env vars / secrets
 node .capy-cli/index.js secret list [--json]
 node .capy-cli/index.js secret set <name> <value>
