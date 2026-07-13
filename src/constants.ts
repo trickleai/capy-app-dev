@@ -16,5 +16,13 @@ export const DEFAULT_SCAFFOLD_REPO_ENV = "CAPY_DEFAULT_SCAFFOLD_REPO";
 export const DEFAULT_SCAFFOLD_REF_ENV = "CAPY_DEFAULT_SCAFFOLD_REF";
 /** Network timeout for API requests (ms). A stalled connection must not hang the CLI. */
 export const API_REQUEST_TIMEOUT_MS = 30_000;
+/**
+ * Longer timeout (ms) for project-code store operations — the whole-workspace
+ * `sync`/`commit` and blob uploads. On a cold app the server materialises the
+ * source tree and can take 30s+ for the first commit; the default 30s timeout
+ * would abort it and leave `deploy`'s auto-save with no snapshot. This budget
+ * covers the cold path while still bounding a truly stalled connection.
+ */
+export const CODE_STORE_TIMEOUT_MS = 90_000;
 /** Timeout for the scaffold `git clone` (ms). */
 export const GIT_CLONE_TIMEOUT_MS = 60_000;
