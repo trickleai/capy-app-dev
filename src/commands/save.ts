@@ -4,6 +4,7 @@ import path from "node:path";
 import { apiRequest, getApiContext, putBlobAt } from "../api.ts";
 import { buildManifest, FALLBACK_IGNORE, makeIgnoreMatcher } from "../code-manifest.ts";
 import { readProjectConfig } from "../config.ts";
+import { CODE_STORE_TIMEOUT_MS } from "../constants.ts";
 import { CliError } from "../errors.ts";
 import {
   isCodeIgnoreResponse,
@@ -89,6 +90,7 @@ export async function saveWorkspace(
     method: "POST",
     pathname: `${appPath}/sync`,
     json: { manifest: built.entries },
+    timeoutMs: CODE_STORE_TIMEOUT_MS,
   });
   if (!isCodeSyncPlanResponse(plan)) {
     throw new CliError("Unexpected response from code/sync", { code: "INVALID_API_RESPONSE" });
@@ -99,7 +101,13 @@ export async function saveWorkspace(
     const meta = fileMeta.get(hash);
     if (!meta) continue;
     const bytes = await readFile(meta.absPath);
-    await putBlobAt(api, `${appPath}/blobs/${hash}`, bytes, meta.contentType);
+    await putBlobAt(
+      api,
+      `${appPath}/blobs/${hash}`,
+      bytes,
+      meta.contentType,
+      CODE_STORE_TIMEOUT_MS,
+    );
     uploaded++;
   }
 
@@ -107,6 +115,7 @@ export async function saveWorkspace(
     method: "POST",
     pathname: `${appPath}/sync/commit`,
     json: { manifest: built.entries, message },
+    timeoutMs: CODE_STORE_TIMEOUT_MS,
   });
   if (!isCodeSyncCommitResponse(commit)) {
     throw new CliError("Unexpected response from code/sync/commit", {

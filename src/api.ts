@@ -159,6 +159,8 @@ export async function apiRequest<T>(
     pathname: string;
     json?: unknown;
     body?: BodyInit;
+    /** Override the request timeout (ms). Defaults to API_REQUEST_TIMEOUT_MS. */
+    timeoutMs?: number;
   },
 ): Promise<T> {
   const url = new URL(options.pathname, api.baseUrl);
@@ -180,7 +182,7 @@ export async function apiRequest<T>(
       headers,
       body,
     },
-    API_REQUEST_TIMEOUT_MS,
+    options.timeoutMs ?? API_REQUEST_TIMEOUT_MS,
   );
 
   const rawText = await response.text();
@@ -217,6 +219,7 @@ export async function putBlobAt(
   pathname: string,
   bytes: Uint8Array,
   contentType: string,
+  timeoutMs: number = API_REQUEST_TIMEOUT_MS,
 ): Promise<{ contentHash: string; sizeBytes: number; deduped: boolean }> {
   const url = new URL(pathname, api.baseUrl);
   const ct = contentType || "application/octet-stream";
@@ -234,7 +237,7 @@ export async function putBlobAt(
       // plain ArrayBuffer-backed view.
       body: new Blob([new Uint8Array(bytes)], { type: ct }),
     },
-    API_REQUEST_TIMEOUT_MS,
+    timeoutMs,
   );
 
   const rawText = await response.text();
