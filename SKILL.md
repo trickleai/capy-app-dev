@@ -97,9 +97,20 @@ If the user asked for a database, do not skip `npm run db:generate` after schema
    (Deploys from `./dist` by default; use `--dir <path>` for another output dir.)
    `deploy` first auto-saves the project **source** as a snapshot (using the same
    `-m` message), then uploads the build. The source snapshot is best-effort: if
-   the code API is unavailable it is skipped with a warning and the deploy still
-   proceeds. An empty/whitespace `-m` is rejected locally (`MISSING_MESSAGE`,
-   exit 2) before any network call.
+   the code API is unavailable it is skipped and the deploy still proceeds. An
+   empty/whitespace `-m` is rejected locally (`MISSING_MESSAGE`, exit 2) before
+   any network call.
+
+   **Check whether the snapshot was actually saved.** Because the save is
+   best-effort, a deploy can succeed with **no** recoverable source snapshot
+   (e.g. the code API timed out). The `--json` result makes this explicit:
+   - `snapshotSaved: true` + `snapshotId: "asnap_…"` → this version has a
+     recoverable source snapshot.
+   - `snapshotSaved: false` + `snapshotId: null` + `snapshotError: "<reason>"` →
+     the deploy went live but **this version has no source snapshot**. Do not
+     assume you can `restore` back to it. Re-run `save -m "<same message>"` to
+     record one (in text mode the CLI prints a `Warning: … WITHOUT a source
+     snapshot` line for the same reason).
 
    **c. Tag the commit with the returned `deployId`:**
    ```bash

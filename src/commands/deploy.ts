@@ -82,7 +82,13 @@ export async function runDeploy(args: string[], json: boolean): Promise<void> {
   if (!json) {
     process.stdout.write("Saving project source...\n");
   }
+  // The source snapshot is best-effort — a save failure never blocks the deploy
+  // — but the outcome must be EXPLICIT, not silent. When the save is skipped the
+  // deploy still succeeds with no bound snapshot, so surface `snapshotError` (and
+  // `snapshotSaved: false` in --json) so the caller/agent knows this version has
+  // no recoverable source snapshot instead of assuming one exists.
   let snapshotId: string | null = null;
+  let snapshotError: string | null = null;
   try {
     const save = await saveWorkspace(api, config.appName, process.cwd(), message);
     snapshotId = save.snapshotId;
@@ -90,9 +96,9 @@ export async function runDeploy(args: string[], json: boolean): Promise<void> {
       process.stdout.write(`  snapshot ${save.snapshotId} (${save.fileCount} files)\n`);
     }
   } catch (error) {
-    const detail = error instanceof Error ? error.message : String(error);
+    snapshotError = error instanceof Error ? error.message : String(error);
     if (!json) {
-      process.stdout.write(`  (source snapshot skipped: ${detail})\n`);
+      process.stdout.write(`  (source snapshot skipped: ${snapshotError})\n`);
     }
   }
 
@@ -174,6 +180,8 @@ export async function runDeploy(args: string[], json: boolean): Promise<void> {
         deployId: response.deployId,
         published: response.published,
         snapshotId,
+        snapshotSaved: snapshotId !== null,
+        snapshotError,
       });
       return;
     }
@@ -194,6 +202,14 @@ export async function runDeploy(args: string[], json: boolean): Promise<void> {
     } else {
       process.stdout.write(
         `Deployed ${response.deployment.appName} — preview at ${response.previewUrl}\nLive site unchanged. Run \`publish\` to go live.\n`,
+      );
+    }
+    // Deploy succeeded but the source snapshot did not — call it out so the user
+    // knows this version has no recoverable source and can re-run `save`.
+    if (snapshotError !== null) {
+      process.stdout.write(
+        `\nWarning: this version was deployed WITHOUT a source snapshot (${snapshotError}).\n` +
+          `Run \`save -m "..."\` to record a recoverable snapshot of the current source.\n`,
       );
     }
   } finally {

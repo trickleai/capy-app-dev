@@ -588,6 +588,71 @@ describe("runDeploy", () => {
     assert.match(out, /Deployed demo-app — live at/);
   });
 
+  it("still deploys but reports snapshotSaved:false + snapshotError when the save leg fails", async () => {
+    await writeConfig("demo-app");
+    await stageDist();
+    // Fail the source-save leg (code/sync 500) so saveWorkspace throws; the deploy
+    // itself must still succeed (best-effort), but the outcome must be explicit.
+    stubFetch((call) => {
+      if (/\/code\//.test(call.url)) {
+        return jsonResponse({ error: { code: "REPO_ERROR", message: "boom" } }, 500);
+      }
+      return jsonResponse({
+        success: true,
+        deployment: {
+          appName: "demo-app",
+          url: "https://demo-app.example",
+          version: "v9",
+          assetsCount: 1,
+          deployedAt: "2026-04-04",
+        },
+        previewUrl: "https://demo-app--x.example",
+        deployId: "x",
+        published: false,
+      });
+    });
+
+    const out = await capture(() => runDeploy(["-m", "ship despite save fail"], true));
+    const parsed = JSON.parse(out);
+    assert.equal(parsed.success, true, "deploy still succeeds");
+    assert.equal(parsed.snapshotId, null);
+    assert.equal(parsed.snapshotSaved, false);
+    assert.equal(typeof parsed.snapshotError, "string", "carries a non-null error detail");
+
+    // No snapshotId is sent to the deploy endpoint when the save was skipped.
+    const deployCall = calls.find((c) => /\/deploy$/.test(c.url));
+    assert.ok(deployCall, "deploy still reaches the API");
+    assert.equal((deployCall.init?.body as FormData).get("snapshotId"), null);
+  });
+
+  it("prints an explicit warning (text mode) when the source snapshot is skipped", async () => {
+    await writeConfig("demo-app");
+    await stageDist();
+    stubFetch((call) => {
+      if (/\/code\//.test(call.url)) {
+        return jsonResponse({ error: { code: "REPO_ERROR", message: "boom" } }, 500);
+      }
+      return jsonResponse({
+        success: true,
+        deployment: {
+          appName: "demo-app",
+          url: "https://demo-app.example",
+          version: "v9",
+          assetsCount: 1,
+          deployedAt: "2026-04-04",
+        },
+        previewUrl: "https://demo-app--x.example",
+        deployId: "x",
+        published: false,
+      });
+    });
+
+    const out = await capture(() => runDeploy(["-m", "ship despite save fail"], false));
+    assert.match(out, /Deployment successful/);
+    assert.match(out, /WITHOUT a source snapshot/);
+    assert.match(out, /Run `save -m/);
+  });
+
   it("throws MISSING_DEPLOY_MANIFEST when dist/deploy.json is absent", async () => {
     await writeConfig("demo-app");
     await mkdir(path.join(workDir, "dist"), { recursive: true });
