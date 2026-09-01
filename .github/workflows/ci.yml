@@ -58,3 +58,7 @@ jobs:
           cache: npm
       - run: npm ci
       - run: npm run build
+      - name: Verify release inputs
+        run: |
+          test -f dist/index.js
+          test -f skills/capy-app-dev/SKILL.md

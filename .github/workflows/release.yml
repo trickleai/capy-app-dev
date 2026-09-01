@@ -34,7 +34,7 @@ jobs:
         with:
           files: |
             dist/capy-app-dev.js
-            SKILL.md
+            skills/capy-app-dev/SKILL.md
           name: ${{ github.ref_name }}
           fail_on_unmatched_files: true
         env:
