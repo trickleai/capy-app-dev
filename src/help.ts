@@ -9,7 +9,7 @@ Usage:
   capy-app-dev deploy -m <message> [--dir <path>] [--json]
   capy-app-dev status [--json]
   capy-app-dev list [--all] [--json]
-  capy-app-dev delete [--hard] [--yes] [--json]
+  capy-app-dev delete [appName] [--hard] [--yes] [--json]
   capy-app-dev secret list [--json]
   capy-app-dev secret set <NAME> <VALUE> [--json]
   capy-app-dev secret unset <NAME> [--json]

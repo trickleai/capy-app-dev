@@ -157,9 +157,15 @@ Ownership is scoped to the caller's account.
 9. Delete the app (destructive — requires explicit confirmation):
 
 ```bash
-node .capy-cli/index.js delete --yes               # soft-delete (default)
-node .capy-cli/index.js delete --hard --yes        # hard-delete (irreversible)
+node .capy-cli/index.js delete --yes                    # soft-delete cwd app
+node .capy-cli/index.js delete <appName> --yes          # soft-delete named app
+node .capy-cli/index.js delete --hard --yes             # hard-delete cwd app
+node .capy-cli/index.js delete <appName> --hard --yes   # hard-delete named app
 ```
+
+Omit `appName` to use the current directory's `.capy-app.json`. Provide `appName`
+to delete an owned app from any directory without reading local project config.
+Both forms require explicit confirmation.
 
 **Soft-delete** (`--yes` only): removes the deployed worker and routing (URL stops
 serving immediately), but preserves the registry record, app name, and D1 data.
