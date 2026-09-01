@@ -370,30 +370,41 @@ describe("runList", () => {
 });
 
 describe("runDelete", () => {
-  it("refuses without --yes and makes no network call (destructive guard)", async () => {
+  it("refuses cwd-based deletion without --yes before authentication or network", async () => {
     await writeConfig("demo-app");
+    delete process.env.CAPY_AUTH_TOKEN;
     stubFetch(() => jsonResponse({}));
 
     await assert.rejects(runDelete([], false), (err: unknown) => {
       assert.ok(err instanceof CliError);
       assert.equal(err.code, "CONFIRMATION_REQUIRED");
       assert.equal(err.exitCode, 2);
+      assert.match(err.message, /"demo-app"/);
       return true;
     });
     assert.equal(calls.length, 0, "must not hit the API without confirmation");
   });
 
-  it("also requires --yes in --json mode (non-interactive)", async () => {
-    await writeConfig("demo-app");
+  it("refuses named soft- and hard-delete without --yes before auth or network", async () => {
+    delete process.env.CAPY_AUTH_TOKEN;
     stubFetch(() => jsonResponse({}));
-    await assert.rejects(
-      runDelete([], true),
-      (err: unknown) => err instanceof CliError && err.code === "CONFIRMATION_REQUIRED",
-    );
+
+    for (const args of [["named-app"], ["named-app", "--hard"]]) {
+      await assert.rejects(runDelete(args, true), (err: unknown) => {
+        assert.ok(err instanceof CliError);
+        assert.equal(err.code, "CONFIRMATION_REQUIRED");
+        assert.equal(err.exitCode, 2);
+        assert.match(err.message, /"named-app"/);
+        if (args.includes("--hard")) {
+          assert.match(err.message, /--hard --yes/);
+        }
+        return true;
+      });
+    }
     assert.equal(calls.length, 0);
   });
 
-  it("sends DELETE and prints the result when confirmed with --yes", async () => {
+  it("keeps cwd-based soft-delete behavior and prints the local-config note", async () => {
     await writeConfig("demo-app");
     stubFetch(() => jsonResponse({ success: true, appName: "demo-app", status: "deleted" }));
 
@@ -401,39 +412,110 @@ describe("runDelete", () => {
 
     assert.equal(calls[0].init?.method, "DELETE");
     assert.match(calls[0].url, /\/api\/apps\/demo-app$/);
+    assert.equal(calls[0].init?.body, undefined);
     assert.match(out, /Deleted app "demo-app"/);
     assert.match(out, /status: deleted/);
+    assert.match(out, /\.capy-app\.json still references this app/);
   });
 
-  it("emits a JSON envelope with --json --yes", async () => {
-    await writeConfig("demo-app");
-    stubFetch(() => jsonResponse({ success: true, appName: "demo-app", status: "deleted" }));
+  it("soft-deletes an explicit name from a directory without project config", async () => {
+    stubFetch(() => jsonResponse({ success: true, appName: "named-app", status: "deleted" }));
 
-    const out = await capture(() => runDelete(["--yes"], true));
-    const parsed = JSON.parse(out);
-    assert.equal(parsed.success, true);
-    assert.equal(parsed.appName, "demo-app");
-    assert.equal(parsed.status, "deleted");
+    const out = await capture(() => runDelete(["named-app", "--yes"], false));
+
+    assert.equal(calls[0].init?.method, "DELETE");
+    assert.match(calls[0].url, /\/api\/apps\/named-app$/);
+    assert.equal(calls[0].init?.body, undefined);
+    assert.match(out, /Deleted app "named-app"/);
+    assert.doesNotMatch(out, /\.capy-app\.json/);
   });
 
-  it("passes through a 404 APP_NOT_FOUND error from the backend", async () => {
-    await writeConfig("demo-app");
-    stubFetch(() =>
-      jsonResponse(
-        { success: false, error: { code: "APP_NOT_FOUND", message: "App not found" } },
-        404,
-      ),
-    );
+  it("trims an explicit name and ignores malformed cwd config", async () => {
+    await writeFile(path.join(workDir, ".capy-app.json"), "not-json");
+    stubFetch(() => jsonResponse({ success: true, appName: "named-app", status: "deleted" }));
 
-    await assert.rejects(runDelete(["--yes"], false), (err: unknown) => {
-      assert.ok(err instanceof ApiError);
-      assert.equal(err.code, "APP_NOT_FOUND");
-      assert.equal(err.status, 404);
-      return true;
+    await capture(() => runDelete(["  named-app  ", "-y"], false));
+
+    assert.match(calls[0].url, /\/api\/apps\/named-app$/);
+  });
+
+  it("hard-deletes an explicit name with the existing request body", async () => {
+    stubFetch(() => jsonResponse({ success: true, appName: "named-app", status: "deleted" }));
+
+    const out = await capture(() => runDelete(["--hard", "named-app", "--yes"], false));
+
+    assert.equal(calls[0].init?.method, "DELETE");
+    assert.match(calls[0].url, /\/api\/apps\/named-app$/);
+    assert.deepEqual(JSON.parse(String(calls[0].init?.body)), { hard: true });
+    assert.match(out, /Hard-deleted app "named-app"/);
+    assert.doesNotMatch(out, /\.capy-app\.json/);
+  });
+
+  it("emits the existing JSON envelope for an explicit name", async () => {
+    stubFetch(() => jsonResponse({ success: true, appName: "named-app", status: "deleted" }));
+
+    const out = await capture(() => runDelete(["named-app", "--yes"], true));
+    assert.deepEqual(JSON.parse(out), {
+      success: true,
+      appName: "named-app",
+      status: "deleted",
     });
   });
 
-  it("throws MISSING_PROJECT_CONFIG when there is no .capy-app.json", async () => {
+  it("rejects invalid explicit names before authentication or network access", async () => {
+    delete process.env.CAPY_AUTH_TOKEN;
+    stubFetch(() => jsonResponse({}));
+
+    await assert.rejects(runDelete(["  Invalid Name  ", "--yes"], false), (err: unknown) => {
+      assert.ok(err instanceof CliError);
+      assert.equal(err.code, "INVALID_APP_NAME");
+      return true;
+    });
+    assert.equal(calls.length, 0);
+  });
+
+  it("rejects unknown flags and extra positional names as INVALID_USAGE", async () => {
+    stubFetch(() => jsonResponse({}));
+
+    for (const args of [
+      ["named-app", "--force"],
+      ["first-app", "second-app", "--yes"],
+    ]) {
+      await assert.rejects(runDelete(args, false), (err: unknown) => {
+        assert.ok(err instanceof CliError);
+        assert.equal(err.code, "INVALID_USAGE");
+        assert.equal(err.exitCode, 2);
+        return true;
+      });
+    }
+    assert.equal(calls.length, 0);
+  });
+
+  it("passes through backend errors for explicit names", async () => {
+    for (const backendError of [
+      { status: 404, code: "APP_NOT_FOUND", message: "App not found" },
+      { status: 403, code: "FORBIDDEN", message: "Not your app" },
+    ]) {
+      stubFetch(() =>
+        jsonResponse(
+          {
+            success: false,
+            error: { code: backendError.code, message: backendError.message },
+          },
+          backendError.status,
+        ),
+      );
+
+      await assert.rejects(runDelete(["named-app", "--yes"], false), (err: unknown) => {
+        assert.ok(err instanceof ApiError);
+        assert.equal(err.code, backendError.code);
+        assert.equal(err.status, backendError.status);
+        return true;
+      });
+    }
+  });
+
+  it("throws MISSING_PROJECT_CONFIG for cwd-based deletion without config", async () => {
     stubFetch(() => jsonResponse({}));
     await assert.rejects(
       runDelete(["--yes"], false),

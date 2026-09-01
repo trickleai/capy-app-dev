@@ -27,7 +27,7 @@ node .capy-cli/index.js deploy -m <message> [--dir <path>] [--json]
 node .capy-cli/index.js save -m <message> [--dir <path>] [--json]
 node .capy-cli/index.js status [--json]
 node .capy-cli/index.js list [--all] [--json]
-node .capy-cli/index.js delete [--hard] [--yes] [--json]
+node .capy-cli/index.js delete [appName] [--hard] [--yes] [--json]
 
 # Versioned deploy workflow (preview-first model)
 node .capy-cli/index.js publish [<deployId>] [--json]   # promote preview to live
@@ -64,9 +64,15 @@ preview slot; `publish` copies a version into the live slot.
 ## Delete lifecycle
 
 ```bash
-node .capy-cli/index.js delete --yes               # soft-delete
-node .capy-cli/index.js delete --hard --yes        # hard-delete
+node .capy-cli/index.js delete --yes                    # soft-delete cwd app
+node .capy-cli/index.js delete <appName> --yes          # soft-delete named app
+node .capy-cli/index.js delete --hard --yes             # hard-delete cwd app
+node .capy-cli/index.js delete <appName> --hard --yes   # hard-delete named app
 ```
+
+Omit `appName` to read the target from the current directory's `.capy-app.json`.
+Provide `appName` to delete an owned app from any directory without reading local
+project config. Both forms require explicit confirmation.
 
 **Soft-delete** (`--yes`): removes the deployed worker and routing so the URL stops
 serving. The registry row, app name, and D1 database are preserved. The name is
