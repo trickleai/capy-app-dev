@@ -12,6 +12,10 @@ import type { SandboxIdentity } from "./types.ts";
 
 let cachedSandboxIdentity: SandboxIdentity | null = null;
 
+function readApiErrorDetails(payload: unknown): unknown {
+  return isRecord(payload) && isRecord(payload.error) ? payload.error.details : undefined;
+}
+
 /** Test-only: clear the memoized sandbox identity so cases don't leak state. */
 export function resetSandboxIdentityCache(): void {
   cachedSandboxIdentity = null;
@@ -195,7 +199,7 @@ export async function apiRequest<T>(
         ? payload.error.code
         : `HTTP_${response.status}`;
     const errorMessage = readApiErrorMessage(payload, response.status);
-    throw new ApiError(response.status, errorCode, errorMessage);
+    throw new ApiError(response.status, errorCode, errorMessage, readApiErrorDetails(payload));
   }
 
   // Distinguish a JSON parse failure from a legitimately parsed `null` body:
@@ -248,7 +252,12 @@ export async function putBlobAt(
       isRecord(payload) && isRecord(payload.error) && typeof payload.error.code === "string"
         ? payload.error.code
         : `HTTP_${response.status}`;
-    throw new ApiError(response.status, code, readApiErrorMessage(payload, response.status));
+    throw new ApiError(
+      response.status,
+      code,
+      readApiErrorMessage(payload, response.status),
+      readApiErrorDetails(payload),
+    );
   }
   if (!isRecord(payload) || typeof payload.contentHash !== "string") {
     throw new CliError(`Blob upload returned an invalid response for ${pathname}`, {
@@ -289,7 +298,12 @@ export async function getBytesAt(
       isRecord(payload) && isRecord(payload.error) && typeof payload.error.code === "string"
         ? payload.error.code
         : `HTTP_${response.status}`;
-    throw new ApiError(response.status, code, readApiErrorMessage(payload, response.status));
+    throw new ApiError(
+      response.status,
+      code,
+      readApiErrorMessage(payload, response.status),
+      readApiErrorDetails(payload),
+    );
   }
   return new Uint8Array(await response.arrayBuffer());
 }

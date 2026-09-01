@@ -12,9 +12,12 @@ import {
   isCreateAppResponse,
   isDeployManifest,
   isDeployResponse,
+  isPublishResponse,
   isRecord,
+  isRollbackResponse,
   isSandboxIdentityResponse,
   isStringRecord,
+  isVersionsResponse,
   normalizeRelativePath,
   parseDirOption,
   parseJson,
@@ -364,6 +367,73 @@ describe("isDeployResponse", () => {
           deployedAt: "t",
           database: { id: "d", name: "db" /* missing migrationsApplied */ },
         },
+      }),
+      false,
+    );
+  });
+});
+
+describe("publish/rollback/version response guards", () => {
+  const publish = {
+    success: true,
+    appName: "demo",
+    deployId: "abc",
+    url: "https://demo.example",
+    withData: false,
+    codePublished: true,
+    dataRestored: false,
+  };
+
+  it("accepts only internally consistent publish success outcomes", () => {
+    assert.equal(isPublishResponse(publish), true);
+    assert.equal(isPublishResponse({ ...publish, withData: true, dataRestored: true }), true);
+    assert.equal(isPublishResponse({ ...publish, success: false }), false);
+    assert.equal(isPublishResponse({ ...publish, codePublished: false }), false);
+    assert.equal(isPublishResponse({ ...publish, dataRestored: true }), false);
+    assert.equal(isPublishResponse({ ...publish, withData: true }), false);
+    assert.equal(isPublishResponse({ ...publish, dataRestored: undefined }), false);
+  });
+
+  it("requires the rollback success contract", () => {
+    const rollback = {
+      success: true,
+      appName: "demo",
+      deployId: "abc",
+      url: "https://demo--preview.example",
+    };
+    assert.equal(isRollbackResponse(rollback), true);
+    assert.equal(isRollbackResponse({ ...rollback, success: false }), false);
+    assert.equal(isRollbackResponse({ ...rollback, url: null }), false);
+  });
+
+  it("accepts nullable real version URLs and rejects legacy or invalid public fields", () => {
+    const entry = {
+      deployId: "abc",
+      version: "deploy-1",
+      workerName: "historical-name",
+      status: "superseded",
+      url: null,
+      createdAt: "2026-07-01T00:00:00Z",
+      snapshotId: null,
+    };
+    const response = { success: true, appName: "demo", versions: [entry] };
+    assert.equal(isVersionsResponse(response), true);
+    assert.equal(
+      isVersionsResponse({
+        ...response,
+        versions: [{ ...entry, status: "live", url: "https://demo.example" }],
+      }),
+      true,
+    );
+    assert.equal(isVersionsResponse({ ...response, success: false }), false);
+    assert.equal(
+      isVersionsResponse({ ...response, versions: [{ ...entry, status: "unknown" }] }),
+      false,
+    );
+    assert.equal(
+      isVersionsResponse({
+        ...response,
+        versions: [{ ...entry, url: undefined, previewUrl: "https://demo--abc.example" }],
       }),
       false,
     );

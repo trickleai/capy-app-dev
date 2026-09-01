@@ -93,24 +93,28 @@ production API); every command below reads it automatically.
       (live URL unchanged); a following `publish` makes it live
 - [ ] `versions` shows exactly one `live` row; others are `preview` / `superseded`
 
-## Test 6 — rollback --with-data (D1 Time Travel)
+## Test 6 — publish --with-data (D1 Time Travel)
 
 **Prereq:** an app with D1 and a writable API (e.g. the guestbook).
 
 **Steps:**
 1. Write a few rows, note the count.
-2. Deploy + publish a new version (this captures a Time Travel bookmark).
-3. Write more rows after that publish, confirm the higher count.
-4. `rollback <deployId> --with-data --yes` for the version from step 2, then `publish`.
+2. Deploy a new version and record its deploy ID. The Time Travel bookmark is captured at
+   this **deploy instant**, not when the version is later published or at the end of its live lifetime.
+3. Publish that version, then write more rows and confirm the higher count.
+4. Run `publish <deployId> --with-data --yes` for the version from step 2.
 
 **Verify:**
-- [ ] The command succeeds (destructive, so `--yes` is required; `--with-data`
-      without `--yes` returns `CONFIRMATION_REQUIRED`)
+- [ ] The command succeeds only with an explicit deploy ID and `--yes`;
+      missing confirmation returns `CONFIRMATION_REQUIRED` before any request
 - [ ] After restore, the row count matches the **deploy-instant snapshot** of the
       target version — rows written *after* that deploy are gone; rows present at
       that instant remain
+- [ ] A restore failure reports `codePublished: true` and `dataRestored: false`;
+      code remains live, so verify D1 state before retrying
 - [ ] Publishing/rolling back a D1 app never returns `DATABASE_CREATE_FAILED`
       (the existing database is reused, not recreated)
+- [ ] Publish operations for the same app are run serially
 
 ## Test 7 — env vars / secrets
 

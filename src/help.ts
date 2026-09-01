@@ -1,4 +1,4 @@
-import { CliError } from "./errors.ts";
+import { ApiError, CliError } from "./errors.ts";
 
 export function writeHelp(): void {
   process.stdout.write(`capy-app-dev
@@ -17,7 +17,8 @@ Usage:
   capy-app-dev env set <NAME> <VALUE> [--json]  [deprecated, use secret]
   capy-app-dev env unset <NAME> [--json]  [deprecated, use secret]
   capy-app-dev publish [deployId] [--json]
-  capy-app-dev rollback <deployId> [--with-data] [--yes] [--json]
+  capy-app-dev publish <deployId> --with-data --yes [--json]
+  capy-app-dev rollback <deployId> [--json]
   capy-app-dev versions [--json]
   capy-app-dev save -m <message> [--dir <path>] [--json]
   capy-app-dev snapshots [--json]
@@ -51,6 +52,9 @@ export function handleError(error: unknown, json: boolean): never {
         error: {
           code: cliError.code,
           message: cliError.message,
+          ...(cliError instanceof ApiError && cliError.details !== undefined
+            ? { details: cliError.details }
+            : {}),
         },
       })}\n`,
     );

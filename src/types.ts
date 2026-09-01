@@ -65,6 +65,9 @@ export interface PublishResponse {
   appName: string;
   deployId: string;
   url: string;
+  withData: boolean;
+  codePublished: true;
+  dataRestored: boolean;
 }
 
 export interface RollbackResponse {
@@ -72,16 +75,18 @@ export interface RollbackResponse {
   appName: string;
   deployId: string;
   url: string;
-  withData?: boolean;
 }
+
+export type DeploymentStatus = "live" | "preview" | "superseded";
 
 export interface VersionEntry {
   deployId: string;
   version: string;
   workerName: string;
-  status: string;
-  previewUrl: string;
+  status: DeploymentStatus;
+  url: string | null;
   createdAt: string;
+  snapshotId: string | null;
 }
 
 export interface VersionsResponse {
