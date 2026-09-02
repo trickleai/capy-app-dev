@@ -5,7 +5,7 @@ import { mkdir, readFile, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { afterEach, beforeEach, describe, it } from "node:test";
-
+import { handleError } from "./help.ts";
 import {
   ApiError,
   CliError,
@@ -160,6 +160,49 @@ async function writeConfig(appName: string): Promise<void> {
     JSON.stringify({ appName, url: `https://${appName}.example` }),
   );
 }
+
+describe("handleError", () => {
+  it("includes ApiError details in JSON stderr and leaves detail-free errors unchanged", () => {
+    const realExit = process.exit;
+    let stderr = "";
+    process.stderr.write = ((chunk: string | Uint8Array) => {
+      stderr += typeof chunk === "string" ? chunk : Buffer.from(chunk).toString("utf8");
+      return true;
+    }) as typeof process.stderr.write;
+    process.exit = ((code?: number) => {
+      throw new Error(`exit:${code}`);
+    }) as typeof process.exit;
+
+    try {
+      assert.throws(
+        () =>
+          handleError(new ApiError(502, "D1_RESTORE_FAILED", "partial", { phase: "data" }), true),
+        /exit:1/,
+      );
+      assert.deepEqual(JSON.parse(stderr), {
+        success: false,
+        error: {
+          code: "D1_RESTORE_FAILED",
+          message: "partial",
+          details: { phase: "data" },
+        },
+      });
+
+      stderr = "";
+      assert.throws(
+        () => handleError(new ApiError(404, "APP_NOT_FOUND", "missing"), true),
+        /exit:1/,
+      );
+      assert.deepEqual(JSON.parse(stderr), {
+        success: false,
+        error: { code: "APP_NOT_FOUND", message: "missing" },
+      });
+    } finally {
+      process.exit = realExit;
+      process.stderr.write = realStderrWrite;
+    }
+  });
+});
 
 describe("runStatus", () => {
   it("fetches app status and prints it", async () => {
@@ -1260,16 +1303,19 @@ describe("runSecret", () => {
 });
 
 describe("runPublish", () => {
-  it("POSTs to /publish with empty body when no deployId given and prints result", async () => {
+  const ordinarySuccess = {
+    success: true,
+    appName: "demo-app",
+    deployId: "abc123",
+    url: "https://demo-app.example",
+    withData: false,
+    codePublished: true,
+    dataRestored: false,
+  };
+
+  it("POSTs an empty body for ordinary latest-preview publish", async () => {
     await writeConfig("demo-app");
-    stubFetch(() =>
-      jsonResponse({
-        success: true,
-        appName: "demo-app",
-        deployId: "abc123",
-        url: "https://demo-app.example",
-      }),
-    );
+    stubFetch(() => jsonResponse(ordinarySuccess));
 
     const out = await capture(() => runPublish([], false));
 
@@ -1277,212 +1323,284 @@ describe("runPublish", () => {
     assert.match(calls[0].url, /\/api\/apps\/demo-app\/publish$/);
     assert.deepEqual(JSON.parse(String(calls[0].init?.body)), {});
     assert.match(out, /Published demo-app — live at https:\/\/demo-app\.example/);
+    assert.doesNotMatch(out, /D1 data restored/);
   });
 
-  it("POSTs with {deployId} when deployId arg provided", async () => {
+  it("POSTs {deployId} for ordinary explicit publish", async () => {
     await writeConfig("demo-app");
-    stubFetch(() =>
-      jsonResponse({
-        success: true,
-        appName: "demo-app",
-        deployId: "abc123",
-        url: "https://demo-app.example",
-      }),
-    );
+    stubFetch(() => jsonResponse(ordinarySuccess));
 
     await capture(() => runPublish(["abc123"], false));
 
     assert.deepEqual(JSON.parse(String(calls[0].init?.body)), { deployId: "abc123" });
   });
 
-  it("emits JSON envelope with --json", async () => {
+  it("publishes with data only with explicit ID and confirmation", async () => {
     await writeConfig("demo-app");
     stubFetch(() =>
       jsonResponse({
-        success: true,
-        appName: "demo-app",
-        deployId: "abc123",
-        url: "https://demo-app.example",
+        ...ordinarySuccess,
+        withData: true,
+        dataRestored: true,
       }),
     );
 
-    const out = await capture(() => runPublish([], true));
-    const parsed = JSON.parse(out);
-    assert.equal(parsed.success, true);
-    assert.equal(parsed.appName, "demo-app");
-    assert.equal(parsed.deployId, "abc123");
+    const out = await capture(() => runPublish(["abc123", "--with-data", "--yes"], false));
+
+    assert.deepEqual(JSON.parse(String(calls[0].init?.body)), {
+      deployId: "abc123",
+      withData: true,
+    });
+    assert.match(out, /Published demo-app — live at https:\/\/demo-app\.example/);
+    assert.match(out, /D1 data restored to the target deployment bookmark\./);
   });
 
-  it("rejects extra positional args with INVALID_USAGE (exit 2)", async () => {
+  it("emits all observed outcome fields for ordinary publish in JSON mode", async () => {
     await writeConfig("demo-app");
-    stubFetch(() => jsonResponse({}));
+    stubFetch(() => jsonResponse(ordinarySuccess));
 
-    await assert.rejects(runPublish(["id1", "id2"], false), (err: unknown) => {
-      assert.ok(err instanceof CliError);
-      assert.equal(err.code, "INVALID_USAGE");
-      assert.equal(err.exitCode, 2);
-      return true;
-    });
+    const out = await capture(() => runPublish([], true));
+    assert.deepEqual(JSON.parse(out), ordinarySuccess);
+  });
+
+  it("emits all observed outcome fields for confirmed with-data publish in JSON mode", async () => {
+    await writeConfig("demo-app");
+    const withDataSuccess = {
+      ...ordinarySuccess,
+      withData: true,
+      dataRestored: true,
+    };
+    stubFetch(() => jsonResponse(withDataSuccess));
+
+    const out = await capture(() => runPublish(["abc123", "--with-data", "--yes"], true));
+
+    assert.deepEqual(JSON.parse(out), withDataSuccess);
+  });
+
+  it("rejects invalid argument combinations before config, auth, or network access", async () => {
+    stubFetch(() => jsonResponse({}));
+    const cases: Array<{ args: string[]; code: string }> = [
+      { args: ["--with-data"], code: "INVALID_USAGE" },
+      { args: ["--with-data", "--yes"], code: "INVALID_USAGE" },
+      { args: ["abc123", "--with-data"], code: "CONFIRMATION_REQUIRED" },
+      { args: ["abc123", "--yes"], code: "INVALID_USAGE" },
+      { args: ["abc123", "--unknown"], code: "INVALID_USAGE" },
+      { args: ["abc123", "--with-data", "--with-data", "--yes"], code: "INVALID_USAGE" },
+      { args: ["abc123", "--with-data", "--yes", "--yes"], code: "INVALID_USAGE" },
+      { args: ["id1", "id2"], code: "INVALID_USAGE" },
+      { args: ["   "], code: "INVALID_USAGE" },
+    ];
+
+    for (const testCase of cases) {
+      await assert.rejects(runPublish(testCase.args, false), (error: unknown) => {
+        assert.ok(error instanceof CliError);
+        assert.equal(error.code, testCase.code, testCase.args.join(" "));
+        assert.equal(error.exitCode, 2);
+        return true;
+      });
+    }
     assert.equal(calls.length, 0);
   });
 
-  it("throws MISSING_PROJECT_CONFIG when there is no .capy-app.json", async () => {
-    stubFetch(() => jsonResponse({}));
+  it("preserves machine-readable backend partial-failure details", async () => {
+    await writeConfig("demo-app");
+    const details = {
+      appName: "demo-app",
+      deployId: "abc123",
+      url: "https://demo-app.example",
+      withData: true,
+      codePublished: true,
+      dataRestored: false,
+      reason: "upstream_rejected",
+    };
+    stubFetch(() =>
+      jsonResponse(
+        {
+          success: false,
+          error: {
+            code: "D1_RESTORE_FAILED",
+            message: "Code was published, but D1 restore did not complete. Verify D1 state.",
+            details,
+          },
+        },
+        502,
+      ),
+    );
+
+    await assert.rejects(
+      runPublish(["abc123", "--with-data", "--yes"], false),
+      (error: unknown) => {
+        assert.ok(error instanceof ApiError);
+        assert.equal(error.code, "D1_RESTORE_FAILED");
+        assert.deepEqual(error.details, details);
+        return true;
+      },
+    );
+  });
+
+  it("prints only the backend error for a human-mode restore partial failure", async () => {
+    await writeConfig("demo-app");
+    const message =
+      "Code was published, but D1 restore did not complete. Verify D1 state before retrying.";
+    stubFetch(() =>
+      jsonResponse(
+        {
+          success: false,
+          error: {
+            code: "D1_RESTORE_FAILED",
+            message,
+            details: {
+              appName: "demo-app",
+              deployId: "abc123",
+              url: "https://demo-app.example",
+              withData: true,
+              codePublished: true,
+              dataRestored: false,
+              reason: "upstream_rejected",
+            },
+          },
+        },
+        502,
+      ),
+    );
+
+    const realExit = process.exit;
+    let stdout = "";
+    let stderr = "";
+    process.stdout.write = ((chunk: string | Uint8Array) => {
+      stdout += typeof chunk === "string" ? chunk : Buffer.from(chunk).toString("utf8");
+      return true;
+    }) as typeof process.stdout.write;
+    process.stderr.write = ((chunk: string | Uint8Array) => {
+      stderr += typeof chunk === "string" ? chunk : Buffer.from(chunk).toString("utf8");
+      return true;
+    }) as typeof process.stderr.write;
+    process.exit = ((code?: number) => {
+      throw new Error(`exit:${code}`);
+    }) as typeof process.exit;
+
+    try {
+      await assert.rejects(async () => {
+        try {
+          await runPublish(["abc123", "--with-data", "--yes"], false);
+        } catch (error) {
+          handleError(error, false);
+        }
+      }, /exit:1/);
+    } finally {
+      process.exit = realExit;
+      process.stdout.write = realStdoutWrite;
+      process.stderr.write = realStderrWrite;
+    }
+
+    assert.equal(stdout, "");
+    assert.equal(stderr, `Error: ${message}\n`);
+    assert.doesNotMatch(`${stdout}${stderr}`, /Published|D1 data restored/);
+  });
+
+  it("rejects a malformed success payload", async () => {
+    await writeConfig("demo-app");
+    stubFetch(() => jsonResponse({ ...ordinarySuccess, codePublished: false }));
+
     await assert.rejects(
       runPublish([], false),
-      (err: unknown) => err instanceof CliError && err.code === "MISSING_PROJECT_CONFIG",
+      (error: unknown) => error instanceof CliError && error.code === "INVALID_API_RESPONSE",
     );
   });
 });
 
 describe("runRollback", () => {
-  it("POSTs to /rollback with {deployId} and prints result", async () => {
+  const rollbackSuccess = {
+    success: true,
+    appName: "demo-app",
+    deployId: "abc123",
+    url: "https://demo-app--preview.example",
+  };
+
+  it("POSTs only {deployId} and describes preview-only effects", async () => {
     await writeConfig("demo-app");
-    stubFetch(() =>
-      jsonResponse({
-        success: true,
-        appName: "demo-app",
-        deployId: "abc123",
-        url: "https://demo-app.example",
-      }),
-    );
+    stubFetch(() => jsonResponse(rollbackSuccess));
 
     const out = await capture(() => runRollback(["abc123"], false));
 
     assert.equal(calls[0].init?.method, "POST");
     assert.match(calls[0].url, /\/api\/apps\/demo-app\/rollback$/);
     assert.deepEqual(JSON.parse(String(calls[0].init?.body)), { deployId: "abc123" });
-    assert.match(out, /Rolled back demo-app to abc123 — live at https:\/\/demo-app\.example/);
+    assert.match(out, /Staged demo-app deployment abc123 at preview/);
+    assert.match(out, /Live site and D1 data are unchanged\./);
+    assert.doesNotMatch(out, /live at/);
   });
 
-  it("rejects missing deployId with INVALID_USAGE (exit 2), no network call", async () => {
+  it("emits a JSON response without legacy data fields", async () => {
     await writeConfig("demo-app");
-    stubFetch(() => jsonResponse({}));
-
-    await assert.rejects(runRollback([], false), (err: unknown) => {
-      assert.ok(err instanceof CliError);
-      assert.equal(err.code, "INVALID_USAGE");
-      assert.equal(err.exitCode, 2);
-      return true;
-    });
-    assert.equal(calls.length, 0);
-  });
-
-  it("rejects extra positional args with INVALID_USAGE (exit 2)", async () => {
-    await writeConfig("demo-app");
-    stubFetch(() => jsonResponse({}));
-
-    await assert.rejects(runRollback(["id1", "id2"], false), (err: unknown) => {
-      assert.ok(err instanceof CliError);
-      assert.equal(err.code, "INVALID_USAGE");
-      assert.equal(err.exitCode, 2);
-      return true;
-    });
-    assert.equal(calls.length, 0);
-  });
-
-  it("emits JSON envelope with --json", async () => {
-    await writeConfig("demo-app");
-    stubFetch(() =>
-      jsonResponse({
-        success: true,
-        appName: "demo-app",
-        deployId: "abc123",
-        url: "https://demo-app.example",
-      }),
-    );
+    stubFetch(() => jsonResponse(rollbackSuccess));
 
     const out = await capture(() => runRollback(["abc123"], true));
-    const parsed = JSON.parse(out);
-    assert.equal(parsed.success, true);
-    assert.equal(parsed.deployId, "abc123");
-    assert.equal(parsed.url, "https://demo-app.example");
+    assert.deepEqual(JSON.parse(out), rollbackSuccess);
   });
 
-  it("--with-data --yes sends {deployId, withData: true} and prints data-restore note", async () => {
-    await writeConfig("demo-app");
-    stubFetch(() =>
-      jsonResponse({
-        success: true,
-        appName: "demo-app",
-        deployId: "abc123",
-        url: "https://demo-app.example",
-        withData: true,
-      }),
-    );
-
-    const out = await capture(() => runRollback(["abc123", "--with-data", "--yes"], false));
-
-    assert.equal(calls[0].init?.method, "POST");
-    assert.match(calls[0].url, /\/api\/apps\/demo-app\/rollback$/);
-    assert.deepEqual(JSON.parse(String(calls[0].init?.body)), {
-      deployId: "abc123",
-      withData: true,
-    });
-    assert.match(out, /Rolled back demo-app to abc123 — live at https:\/\/demo-app\.example/);
-    assert.match(out, /Note: D1 database restored to that version's snapshot\./);
-  });
-
-  it("--with-data without --yes throws CONFIRMATION_REQUIRED (exit 2), no network call", async () => {
-    await writeConfig("demo-app");
+  it("rejects missing, blank, extra, flag, and legacy-option args before local I/O", async () => {
     stubFetch(() => jsonResponse({}));
+    const cases = [
+      [],
+      ["   "],
+      ["id1", "id2"],
+      ["--unknown"],
+      ["abc123", "--with-data"],
+      ["abc123", "--yes"],
+      ["abc123", "--with-data", "--yes"],
+    ];
 
-    await assert.rejects(runRollback(["abc123", "--with-data"], false), (err: unknown) => {
-      assert.ok(err instanceof CliError);
-      assert.equal(err.code, "CONFIRMATION_REQUIRED");
-      assert.equal(err.exitCode, 2);
-      assert.match(err.message, /destructive/);
-      return true;
-    });
-    assert.equal(calls.length, 0, "must not hit the API without confirmation");
-  });
-
-  it("normal rollback (no flags) still works as before", async () => {
-    await writeConfig("demo-app");
-    stubFetch(() =>
-      jsonResponse({
-        success: true,
-        appName: "demo-app",
-        deployId: "xyz999",
-        url: "https://demo-app.example",
-      }),
-    );
-
-    const out = await capture(() => runRollback(["xyz999"], false));
-
-    assert.deepEqual(JSON.parse(String(calls[0].init?.body)), { deployId: "xyz999" });
-    assert.match(out, /Rolled back demo-app to xyz999 — live at https:\/\/demo-app\.example/);
-    assert.doesNotMatch(out, /D1 database/);
+    for (const args of cases) {
+      await assert.rejects(runRollback(args, false), (error: unknown) => {
+        assert.ok(error instanceof CliError);
+        assert.equal(error.code, "INVALID_USAGE", args.join(" "));
+        assert.equal(error.exitCode, 2);
+        return true;
+      });
+    }
+    assert.equal(calls.length, 0);
   });
 });
 
 describe("runVersions", () => {
-  it("GETs /versions and prints a table", async () => {
+  const versionsSuccess = {
+    success: true,
+    appName: "demo-app",
+    versions: [
+      {
+        deployId: "live-id",
+        version: "deploy-v2",
+        workerName: "historical-worker-name",
+        status: "live",
+        url: "https://demo-app.example",
+        createdAt: "2026-07-02T00:00:00Z",
+        snapshotId: "asnap_live",
+      },
+      {
+        deployId: "old-id",
+        version: "deploy-v1",
+        workerName: "historical-worker-name",
+        status: "superseded",
+        url: null,
+        createdAt: "2026-07-01T00:00:00Z",
+        snapshotId: null,
+      },
+    ],
+  };
+
+  it("GETs /versions and safely renders reachable and null URLs", async () => {
     await writeConfig("demo-app");
-    stubFetch(() =>
-      jsonResponse({
-        success: true,
-        appName: "demo-app",
-        versions: [
-          {
-            deployId: "abc123",
-            version: "deploy-v1",
-            workerName: "demo-app--abc123",
-            status: "live",
-            previewUrl: "https://demo-app--abc123.example",
-            createdAt: "2026-07-01T00:00:00Z",
-          },
-        ],
-      }),
-    );
+    stubFetch(() => jsonResponse(versionsSuccess));
 
     const out = await capture(() => runVersions([], false));
 
     assert.equal(calls[0].init?.method, "GET");
     assert.match(calls[0].url, /\/api\/apps\/demo-app\/versions$/);
-    assert.match(out, /DEPLOY_ID/);
-    assert.match(out, /abc123/);
-    assert.match(out, /live/);
+    assert.match(out, /DEPLOY_ID\s+STATUS\s+VERSION\s+URL\s+CREATED_AT/);
+    assert.match(out, /https:\/\/demo-app\.example/);
+    assert.match(out, /old-id\s+superseded\s+deploy-v1\s+-/);
+    assert.doesNotMatch(out, /PREVIEW_URL/);
   });
 
   it("prints 'No versions.' for empty list", async () => {
@@ -1493,7 +1611,15 @@ describe("runVersions", () => {
     assert.match(out, /No versions\./);
   });
 
-  it("emits JSON envelope with --json", async () => {
+  it("preserves nullable URLs in JSON mode", async () => {
+    await writeConfig("demo-app");
+    stubFetch(() => jsonResponse(versionsSuccess));
+
+    const out = await capture(() => runVersions([], true));
+    assert.deepEqual(JSON.parse(out), versionsSuccess);
+  });
+
+  it("rejects a legacy previewUrl-only payload", async () => {
     await writeConfig("demo-app");
     stubFetch(() =>
       jsonResponse({
@@ -1501,33 +1627,27 @@ describe("runVersions", () => {
         appName: "demo-app",
         versions: [
           {
-            deployId: "abc123",
-            version: "deploy-v1",
-            workerName: "demo-app--abc123",
-            status: "live",
-            previewUrl: "https://demo-app--abc123.example",
-            createdAt: "2026-07-01T00:00:00Z",
+            ...versionsSuccess.versions[0],
+            url: undefined,
+            previewUrl: "https://demo-app--old-id.example",
           },
         ],
       }),
     );
 
-    const out = await capture(() => runVersions([], true));
-    const parsed = JSON.parse(out);
-    assert.equal(parsed.success, true);
-    assert.equal(parsed.appName, "demo-app");
-    assert.equal(parsed.versions.length, 1);
-    assert.equal(parsed.versions[0].deployId, "abc123");
+    await assert.rejects(
+      runVersions([], false),
+      (error: unknown) => error instanceof CliError && error.code === "INVALID_API_RESPONSE",
+    );
   });
 
-  it("rejects extra positional args with INVALID_USAGE (exit 2)", async () => {
-    await writeConfig("demo-app");
+  it("rejects extra positional args before network access", async () => {
     stubFetch(() => jsonResponse({}));
 
-    await assert.rejects(runVersions(["extra"], false), (err: unknown) => {
-      assert.ok(err instanceof CliError);
-      assert.equal(err.code, "INVALID_USAGE");
-      assert.equal(err.exitCode, 2);
+    await assert.rejects(runVersions(["extra"], false), (error: unknown) => {
+      assert.ok(error instanceof CliError);
+      assert.equal(error.code, "INVALID_USAGE");
+      assert.equal(error.exitCode, 2);
       return true;
     });
     assert.equal(calls.length, 0);

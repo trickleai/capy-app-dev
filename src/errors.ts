@@ -11,9 +11,11 @@ export class CliError extends Error {
 
 export class ApiError extends CliError {
   status: number;
+  details?: unknown;
 
-  constructor(status: number, code: string, message: string) {
+  constructor(status: number, code: string, message: string, details?: unknown) {
     super(message, { code });
     this.status = status;
+    this.details = details;
   }
 }

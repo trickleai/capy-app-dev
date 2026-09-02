@@ -161,27 +161,25 @@ export function isDeployResponse(value: unknown): value is DeployResponse {
 export function isPublishResponse(value: unknown): value is PublishResponse {
   return (
     isRecord(value) &&
+    value.success === true &&
     typeof value.appName === "string" &&
     typeof value.deployId === "string" &&
-    typeof value.url === "string"
+    typeof value.url === "string" &&
+    typeof value.withData === "boolean" &&
+    value.codePublished === true &&
+    typeof value.dataRestored === "boolean" &&
+    value.dataRestored === value.withData
   );
 }
 
 export function isRollbackResponse(value: unknown): value is RollbackResponse {
-  if (
-    !isRecord(value) ||
-    typeof value.appName !== "string" ||
-    typeof value.deployId !== "string" ||
-    typeof value.url !== "string"
-  ) {
-    return false;
-  }
-
-  if (value.withData !== undefined && typeof value.withData !== "boolean") {
-    return false;
-  }
-
-  return true;
+  return (
+    isRecord(value) &&
+    value.success === true &&
+    typeof value.appName === "string" &&
+    typeof value.deployId === "string" &&
+    typeof value.url === "string"
+  );
 }
 
 function isVersionEntry(value: unknown): value is VersionEntry {
@@ -190,15 +188,17 @@ function isVersionEntry(value: unknown): value is VersionEntry {
     typeof value.deployId === "string" &&
     typeof value.version === "string" &&
     typeof value.workerName === "string" &&
-    typeof value.status === "string" &&
-    typeof value.previewUrl === "string" &&
-    typeof value.createdAt === "string"
+    (value.status === "live" || value.status === "preview" || value.status === "superseded") &&
+    (value.url === null || typeof value.url === "string") &&
+    typeof value.createdAt === "string" &&
+    (value.snapshotId === null || typeof value.snapshotId === "string")
   );
 }
 
 export function isVersionsResponse(value: unknown): value is VersionsResponse {
   return (
     isRecord(value) &&
+    value.success === true &&
     typeof value.appName === "string" &&
     Array.isArray(value.versions) &&
     value.versions.every(isVersionEntry)

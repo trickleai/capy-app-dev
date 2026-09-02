@@ -130,9 +130,16 @@ If the user asked for a database, do not skip `npm run db:generate` after schema
    URL changes only when you publish:
 
    ```bash
-   node .capy-cli/index.js publish            # publish the latest preview
-   node .capy-cli/index.js publish <deployId> # publish a specific version
+   node .capy-cli/index.js publish            # publish the latest preview code
+   node .capy-cli/index.js publish <deployId> # publish specific version code
+   node .capy-cli/index.js publish <deployId> --with-data --yes # code, then D1 restore
    ```
+
+   Data restore is destructive and requires both an explicit `deployId` and
+   `--yes`. If restore fails after code publication, the target code remains live;
+   inspect the partial-failure details and verify D1 state before retrying. Run all
+   publish operations for the same app serially; concurrent same-app publishes are
+   unsupported.
 
    For a normal "build and ship" request, run `publish` right after `deploy`.
    Skip it only when the user explicitly wants to preview/review before going live.
@@ -218,26 +225,27 @@ slot (served at `previewUrl`). `deploy` only ever writes the preview slot;
    always preview-only — **including the first-ever deploy** (`published` is
    `false`, the live URL is not created/changed). Accessible at `previewUrl`.
    To go live you must `publish`.
-2. **publish [deployId]** — promotes a version to the live slot. Omit `deployId`
-   to publish the latest preview; pass an explicit `deployId` to publish a
-   specific version.
+2. **publish [deployId]** — publishes a version's code to the live slot. Omit
+   `deployId` to publish the latest preview; pass an explicit `deployId` to
+   publish a specific version. `publish <deployId> --with-data --yes` publishes
+   that code and then destructively restores its D1 bookmark. A restore failure
+   does not roll live code back; verify D1 state before retrying.
 3. **rollback \<deployId\>** — re-deploys a previous version into the **preview
-   slot** for review (it does NOT change the live URL by itself — publish
-   afterward to make it live). Requires an explicit `deployId` (find one with
-   `versions`). By default **does not roll back data** — the D1 database is
-   unchanged. Pass `--with-data --yes` to also restore the D1 database to the
-   snapshot captured at that deploy's instant (destructive and irreversible —
-   post-deploy writes since that version are lost).
-4. **versions** — lists all deployment versions with their status, preview URL,
-   and timestamp.
+   slot** for review. It never changes live code or D1 data. Requires an explicit
+   `deployId` (find one with `versions`); publish afterward to make it live.
+4. **versions** — lists all deployment versions with their status, reachable URL
+   (or no URL for superseded versions), and timestamp.
+
+Publish operations for one app must run serially. Concurrent same-app publishes
+are unsupported until the platform has a durable per-app operation lease.
 
 ```bash
 node .capy-cli/index.js deploy -m "add checkout page"      # preview-only (always, incl. first deploy)
-node .capy-cli/index.js publish             # promote latest preview to live
-node .capy-cli/index.js publish abc123      # promote specific version to live
-node .capy-cli/index.js rollback abc123     # re-deploy abc123 into preview slot
-node .capy-cli/index.js rollback abc123 --with-data --yes  # + restore D1 data
-node .capy-cli/index.js publish             # then publish to make the rolled-back version live
+node .capy-cli/index.js publish             # publish latest preview code to live
+node .capy-cli/index.js publish abc123      # publish specific version code to live
+node .capy-cli/index.js publish abc123 --with-data --yes  # publish code, then restore D1
+node .capy-cli/index.js rollback abc123     # stage abc123 in preview; live/data unchanged
+node .capy-cli/index.js publish             # then publish the staged version to live
 node .capy-cli/index.js versions            # list all versions
 ```
 
@@ -275,8 +283,9 @@ Notes:
   server's stored vars), so this re-applies that version's env rather than
   resetting the server to an exact snapshot.
 - Redeploying after a rollback uploads the **current** working tree, which
-  supersedes the rolled-back version. Roll back to stop the bleeding, fix forward,
-  then deploy again.
+  supersedes the staged rollback version. Roll back to preview and verify it, then
+  explicitly publish that deploy ID to switch live. For an urgent known-good
+  recovery, publish the deploy ID directly; afterward, fix forward and deploy again.
 
 ## Saving project source (`save`)
 
@@ -380,7 +389,7 @@ Every command exits non-zero on failure; `--json` emits `{ "success": false, "er
 |------|------|--------|
 | `APP_QUOTA_EXCEEDED` | 402 | Plan limit reached. **Do not retry or rename.** Tell the user to upgrade their plan or delete an unused app to free a slot. |
 | `APP_NAME_TAKEN` | 409 | Name in use. Pick a different name and retry `create`. |
-| `CONFIRMATION_REQUIRED` | — | Destructive command called without required confirmation flag. `delete` → add `--yes`. `delete --hard` → add `--hard --yes`. `rollback --with-data` → add `--with-data --yes`. `restore` → add `--yes` (it overwrites the local workspace). |
+| `CONFIRMATION_REQUIRED` | — | Destructive command called without required confirmation flag. `delete` → add `--yes`. `delete --hard` → add `--hard --yes`. `publish <deployId> --with-data` → add `--yes`. `restore` → add `--yes` (it overwrites the local workspace). |
 | `MISSING_MESSAGE` | — | `save`/`deploy` called without a non-empty `-m "<message>"`. Add a specific message describing the change (see "Writing good messages"). No network call is made. |
 | `SNAPSHOT_NOT_FOUND` | 404 | `restore` was given a snapshot id that does not exist for this app. Run `snapshots` to list valid ids. |
 | `MISSING_PROJECT_CONFIG` | — | `.capy-app.json` not found. Run `create` first. |

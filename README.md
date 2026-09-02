@@ -30,8 +30,9 @@ node .capy-cli/index.js list [--all] [--json]
 node .capy-cli/index.js delete [appName] [--hard] [--yes] [--json]
 
 # Versioned deploy workflow (preview-first model)
-node .capy-cli/index.js publish [<deployId>] [--json]   # promote preview to live
-node .capy-cli/index.js rollback <deployId> [--with-data] [--yes] [--json]
+node .capy-cli/index.js publish [<deployId>] [--json]  # publish code to live
+node .capy-cli/index.js publish <deployId> --with-data --yes [--json]
+node .capy-cli/index.js rollback <deployId> [--json]    # stage code in preview only
 node .capy-cli/index.js versions [--json]               # list all deployment versions
 
 # Source version control
@@ -57,9 +58,11 @@ capy-app uses a **preview-first, two-slot** deploy model. Each app has a fixed
 preview slot; `publish` copies a version into the live slot.
 
 1. **deploy** — uploads the new version to the **preview slot only**, always — **including the first deploy** (`published` is `false`, the live URL is unchanged). Accessible at `previewUrl`; go live with `publish`.
-2. **publish [deployId]** — promotes a version to the live slot. Omit `deployId` to publish the latest preview.
-3. **rollback \<deployId\>** — re-deploys a previous version into the **preview slot** for review (does not change the live URL by itself; `publish` afterward to go live). Pass `--with-data --yes` to also restore the D1 database to the deploy-time snapshot (destructive — post-deploy writes since that version are lost).
-4. **versions** — lists all deployment versions with their status, preview URL, and timestamp.
+2. **publish [deployId]** — publishes code to the live slot. Omit `deployId` to publish the latest preview. `publish <deployId> --with-data --yes` also restores the target deployment's D1 bookmark after code is live; this is destructive and later writes can be lost. If data restore fails, the target code remains live and the error reports the partial outcome; verify D1 state before retrying.
+3. **rollback \<deployId\>** — re-deploys a previous version into the **preview slot** for review. Live code and D1 data remain unchanged; run `publish` afterward to go live.
+4. **versions** — lists deployment versions with status and only real reachable URLs; superseded versions have no URL.
+
+Run publish operations for the same app serially. Concurrent same-app publishes are unsupported until a durable per-app operation lease is implemented.
 
 ## Delete lifecycle
 

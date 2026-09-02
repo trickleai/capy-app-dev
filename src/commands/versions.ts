@@ -41,8 +41,8 @@ export async function runVersions(args: string[], json: boolean): Promise<void> 
 }
 
 function writeHumanTable(versions: readonly VersionEntry[]): void {
-  const rows = versions.map((v) => [v.deployId, v.status, v.version, v.previewUrl, v.createdAt]);
-  const header = ["DEPLOY_ID", "STATUS", "VERSION", "PREVIEW_URL", "CREATED_AT"];
+  const rows = versions.map((v) => [v.deployId, v.status, v.version, v.url ?? "-", v.createdAt]);
+  const header = ["DEPLOY_ID", "STATUS", "VERSION", "URL", "CREATED_AT"];
   const widths = header.map((h, i) => Math.max(h.length, ...rows.map((r) => r[i].length)));
   const line = (cells: string[]) =>
     cells
